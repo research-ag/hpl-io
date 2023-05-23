@@ -1,0 +1,43 @@
+type TxInput = variant { ftTransfer : FtTransfer };
+type FtTransfer = record {
+  from : AccountReference;
+  to : AccountReference;
+  assetId : nat;
+  amount : variant {
+    amount : nat;
+    max;
+  };
+  memo : vec blob;
+};
+type AccountReference = variant {
+  sub : nat;
+  vir : record { principal; nat };
+  mint; 
+};
+type GlobalId = record { nat; nat };
+
+type Submit_Result = variant {
+  ok : GlobalId;
+  err : SubmitError;
+};
+type SubmitError = opt variant {
+  NotRunning;
+  TooLargeAssetId;
+  TooLargeFtQuantity;
+  TooLargeMemo;
+  TooLargeSubaccountId;
+  TooLargeVirtualAccountId;
+};
+
+type Status = opt variant {
+  failedToSend; // the batch did not make it to the ledger
+  queued : nat; // return position from head of queue
+  sent : nat; // return batch number in which the tx was sent, now ask ledger for status
+};
+// null means the status is no longer available
+
+service : () -> {
+  submitAndExecute : (TxInput) -> (Submit_Result);
+  txStatus : (GlobalId) -> (Status) query;
+    // trap if wrong aggregator
+};

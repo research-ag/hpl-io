@@ -1,0 +1,179 @@
+// account has a type which defines what it can store
+// the only type available is `ft`
+type AccountState = variant { ft : FtState };
+type FtState = record { AssetId; nat };
+type AssetId = nat;
+
+// account is referenced by (owner, subid)
+type SubId = nat;
+
+// virtual account is referenced by (owner, virid)
+type VirId = nat;
+
+// state of a virtual account from the perspective of the owner
+type VirtualAccountState = record {
+  state : AccountState;
+  backingAccount : SubId;
+  accessPrincipal : principal;
+  expiration : Expiration;
+};
+type Expiration = variant {
+  None;
+  Timestamp : nat64;
+};
+
+// state of a virtual account from the perspective of the remote principal
+type RemoteState = record {
+  state : AccountState;
+  accessPrincipal : principal; // TBD: could remove this
+  expiration : Expiration;
+};
+
+type AccountType = variant { ft : AssetId; };
+
+type OpenAccounts_Result = variant {
+  ok : record { first : SubId };
+  err : opt variant {
+    NoSpaceForPrincipal;
+    NoSpaceForSubaccount;
+    InvalidArguments : text;
+      // UnknownFtAsset;
+  };
+};
+
+type Open_Result = variant {
+  ok : record { id : VirId };
+  err : opt variant {
+    NoSpaceForAccount;
+    InvalidArguments : text;
+      // MismatchInAsset;
+      // UnknownSubaccount; // means unknown backing subaccount
+      // InvalidExpirationTime;
+  };
+};
+
+type Delete_Result = variant {
+  ok;
+  err : opt variant {
+    DeletedVirtualAccount; // means had already been deleted before
+    InvalidArguments : text;
+      // UnknownVirtualAccount; 
+  };
+};
+
+type VirtualAccountUpdate = record {
+  state : opt StateUpdate;
+  backingAccount : opt SubId;
+  expiration : opt Expiration;
+};
+type StateUpdate = variant { 
+  ft : variant {
+    set : nat;
+    increment : nat;
+    decrement : nat;
+  };
+};
+
+type Update_Result = variant {
+  ok : variant {
+    ft : record {
+      balance : nat;
+      delta : int;
+    };
+  };
+  err : opt variant {
+    DeletedVirtualAccount;
+    InsufficientFunds;
+    InvalidArguments : text;
+      // InvalidExpirationTime;
+      // MismatchInAsset;
+      // UnknownSubaccount;
+      // UnknownVirtualAccount;
+  };
+};
+
+type TxStatus = record {
+  batch : nat;
+  status : variant {
+    unknown; // not yet seen or too old, batch = last batch processed
+    failed : opt ProcessingError; // failed, batch = batch in which the tx was received
+    succeeded : TxOutput; // suceeded, batch = batch in which the tx was received
+  };
+};
+type TxOutput = variant {
+  ftTransfer : record {
+    amount : nat;
+    fee : nat;
+  };
+};
+// amount + fee was deducted at sender, amount was credited at receiver
+type ProcessingError = variant {
+  ftTransfer : variant {
+    DeletedVirtualAccount;
+    InsufficientFunds;
+    InvalidArguments : text;
+      // MismatchInAsset;
+      // MismatchInRemotePrincipal; // no access
+      // NotAController;
+      // UnknownFtAsset;
+      // UnknownPrincipal;
+      // UnknownSubaccount;
+      // UnknownVirtualAccount;
+    // The following cannot happen in ftTransfer unless internal error:
+    //   NonZeroAssetSum; 
+    //   TooManyContributions;
+    //   TooManyFlows;
+    //   IncorrectOwnerIndex;
+    // The following is caught when submitting and is part of SubmitError
+    //   TooLargeAssetId;
+    //   TooLargeFtQuantity;
+    //   TooLargeMemo;
+    //   TooLargeSubaccountId;
+    //   TooLargeVirtualAccountId;
+  };
+};
+
+type GlobalId = record { nat; nat };
+
+service : () -> {
+  // non-public account management queries 
+  accountState : (SubId) -> (opt AccountState) query; 
+    // access by owner
+    // trap if caller unknown
+    // null if subId unknown
+    // null if a new account state variant other than ft is returned (upgrade)
+  virtualAccountState : (VirId) -> (opt VirtualAccountState) query; 
+    // access by owner (not by access principal)
+    // trap if caller unknown
+    // null if virId unknown or deleted 
+    // null if a new account state variant other than ft is returned (upgrade)
+  nAccounts : () -> (nat) query; 
+    // trap if caller unknown
+  nVirtualAccounts : () -> (nat) query; 
+    // trap if caller unknown
+
+  remoteState : (principal, VirId) -> (opt RemoteState) query; 
+    // access by access principal (not by owner)
+    // trap if principal does not exist
+    // trap if virid unknown or deleted
+    // trap if caller != accessPrincipal
+    // null if a new account state variant other than ft is returned (upgrade)
+
+  // account management updates
+  openAccounts : (record { n : nat; type : AccountType }) -> (OpenAccounts_Result); 
+    // caller unknown is not possible because the caller gets auto-registered
+  openVirtualAccount : (VirtualAccountState) -> (Open_Result); 
+    // trap if caller unknown
+  deleteVirtualAccount : (VirId) -> (Delete_Result); 
+    // trap if caller unknown
+  updateVirtualAccount : (VirId, VirtualAccountUpdate) -> (Update_Result); 
+    // trap if caller unknown
+
+  // public queries
+  ftSupply : (AssetId) -> (opt nat) query;
+    // null if assetid unknown
+  ftController : (AssetId) -> (opt principal) query;
+    // null if assetid unknown
+  aggregators : () -> (vec principal) query; // list all aggregators
+  txStatus : (GlobalId) -> (TxStatus) query;
+};

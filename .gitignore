@@ -1,0 +1,24 @@
+# Various IDEs and Editors
+.vscode/
+.idea/
+**/*~
+
+# Mac OSX temporary files
+.DS_Store
+**/.DS_Store
+
+# dfx temporary files
+.dfx/
+
+# generated files
+src/declarations/
+
+# frontend code
+node_modules/
+dist/
+
+canister_ids.json
+.mops
+/deploy/dfx.json
+deploy/create_canisters.sh
+deploy/deploy_canisters.sh
