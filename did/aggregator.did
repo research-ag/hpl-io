@@ -125,7 +125,9 @@ service : (principal, nat) -> {
   // those fields.
   // If structure of GlobalId changes then it is advisable to introduce a new
   // function replacing this `submitAndExecute`.
-  submitAndExecute : (TxInput) -> (record { GlobalId; TxStatus });
+  // New cases can be added to the TxStatus variant because it is wrapped in 
+  // an `opt` (see also the `txStatus` query below).
+  submitAndExecute : (TxInput) -> (record { GlobalId; opt TxStatus });
 
   // QUERIES
 
@@ -146,7 +148,7 @@ service : (principal, nat) -> {
   // 
   // Transactions can be permanently dropped due to the following reasons:
   // * The aggregator was frozen (due to low cycle balance) and remained frozen for a certain time (~2 minutes) while the transaction was queued.
-  // * The aggregator ran out of cycles entirely (hence go uninstalled) while the transaction was queued.
+  // * The aggregator ran out of cycles entirely (hence got uninstalled) while the transaction was queued.
   // * The communication from the aggregator's subnet to the ledger's subnet was interrupted for longer than a certain time (~2 minutes).
   // * The aggregator was upgraded while the transaction was queued and the upgrade took longer than a certain time (~2 minutes).
   // * The aggregator was upgraded while the transaction was queued and discarded its state.
@@ -158,9 +160,19 @@ service : (principal, nat) -> {
   // those fields.
   // If structure of GlobalId changes then it is advisable to introduce a new
   // function replacing this `txStatus`.
-  txStatus : (GlobalId) -> (record { TxStatus }) query;
+  // New cases can be added to the TxStatus variant because it is wrapped in 
+  // an `opt`. Old code that does not know the new case will see the whole
+  // status as `null`. 
+  // For example, if we want to add the ability to cancel transactions that 
+  // are already in the queue then we can add a case `canceled` to the TxStatus
+  // variant. An old frontend that is not aware of the case `canceled` would 
+  // see `null` as the status if it queries a transaction that is in that state.
+  // However, this is not a problem because a frontend queries only its own 
+  // transactions. And if the frontend does not know about the cancelation
+  // feature then none of its transactions will be in that state.
+  txStatus : (GlobalId) -> (record { opt TxStatus }) query;
 
-  // If submitAndExecute returns an http 500 error (does not pass inspection) then the caller does not know the reason.
+  // If submitAndExecute returns an http 500 error because it does not pass inspection then the caller does not know the reason.
   // To find out the reason the caller can call `submitDryRun` with the same argument.
   // When querying (in query mode) then inspection will not run.
   // Instead, the call will trap with a descriptive error message.
