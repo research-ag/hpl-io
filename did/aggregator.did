@@ -1,4 +1,25 @@
+// An account is referenced by (owner, subid).
+// `owner` is a principal, `subid` a nat.
+type SubId = nat;
+
+// A virtual account is referenced by (owner, virid).
+// `owner` is a principal, `virid` a nat.
+type VirId = nat;
+
+// TxInput describes a transaction. 
+// Currently there is only one transaction type, `ftTransfer`.
+// In the future new transaction types will be introduced.
 type TxInput = variant { ftTransfer : FtTransfer };
+
+// FtTransfer describes a fungible token transfer from one account to another.
+// `from` is the sending account.
+// `to` is the receiving account. 
+// `assetId` is the id of the token to be transferred.
+// `amount` is the number of tokens to be transferred.
+// Specifying `max` as `amount` transfers the entire available amount in the 
+// sending account.
+// `memo` is a vector of blobs which can be used to attach metadata that is 
+// relevant for the sender or receiver.
 type FtTransfer = record {
   from : AccountReference;
   to : AccountReference;
@@ -9,35 +30,131 @@ type FtTransfer = record {
   };
   memo : vec blob;
 };
+
+// The sending or receiving account can be an account, virtual account, or
+// the "mint".
+// `sub` specifies the account of the caller with the given SubId.
+// `vir` specifies the virtual account of the given owner principal with the
+// given VirId. The caller must have access to that virtual account or the 
+// transfer will fail.
+// `mint` specifies the "mint" of the given asset id. Sending to `mint` burns
+// tokens. Sending from `mint` mints tokens. In both cases, the caller must be
+// the controller of the given asset id or the transfer will fail. Only the
+// controller can mint and burn tokens.
 type AccountReference = variant {
-  sub : nat;
-  vir : record { principal; nat };
-  mint; 
+  sub : SubId;
+  vir : record { principal; VirId };
+  mint;
 };
+
+// Transactions receive a globally unique id when they are submitted to the 
+// aggregator. The global id remains with the transaction through its entire
+// lifetime. Global ids are never re-used, even if the transaction fails in 
+// processing. 
 type GlobalId = record { nat; nat };
 
-type Submit_Result = variant {
-  ok : GlobalId;
-  err : SubmitError;
-};
-type SubmitError = opt variant {
-  NotRunning;
-  TooLargeAssetId;
-  TooLargeFtQuantity;
-  TooLargeMemo;
-  TooLargeSubaccountId;
-  TooLargeVirtualAccountId;
+// The status of a transaction at the aggregator can be either queued or 
+// pending. 
+// `queued` means that the transaction is in the queue in the aggregator
+// and has not yet been placed into a batch. In this case the status specifies
+// the distance from the head of the queue measured in the number of 
+// transactions that come before it.
+// `pending` means that the transaction has been placed in a batch and the
+// batch has been sent to the ledger, but the aggregator has not yet received
+// the response, i.e. does not know for sure whether the batch was received.
+type TxStatus = variant {
+  queued : nat;
+  pending;
 };
 
-type Status = opt variant {
-  failedToSend; // the batch did not make it to the ledger
-  queued : nat; // return position from head of queue
-  sent : nat; // return batch number in which the tx was sent, now ask ledger for status
-};
-// null means the status is no longer available
+// API
 
-service : () -> {
-  submitAndExecute : (TxInput) -> (Submit_Result);
-  txStatus : (GlobalId) -> (Status) query;
-    // trap if wrong aggregator
+service : (principal, nat) -> {
+  // UPDATES
+
+  // `submitAndExecute` submits a transaction to the aggregator.
+  // The aggregator returns the issued global id and the TxStatus immediately
+  // after enqueueing the transaction. The purpose of returning TxStatus is so
+  // that the caller knows the queue position without having to make another
+  // call.
+  //
+  // The returned TxStatus is always `queued` and never `pending`, i.e.
+  // returning a TxStatus variant instead of only the queue position has some
+  // redundancy. The reason to do so is to simplify the calling code though
+  // unification. The assumption is that the calling code will poll the 
+  // `txStatus` query function after submission. Hence the first `TxStatus` 
+  // returned by `submitAndExecute` can be fed into the same processing logic
+  // as the return values obtained in the subsequent polling.
+  //
+  // `submitAndExecute` will trap in the following cases:
+  // * A `SubId`, `VirId` or `assetId` is larger than 64 bits
+  // * `amount` is larger than 128 bits
+  // * The principal in `vir` is longer than 29 bytes or otherwise invalid
+  // * The memo vector is too long (too many entries)
+  // * An individual memo entry is too long (too many bytes)
+  // * The combined length of all memos is too large (too many bytes)
+  // * The internal queue is full (back pressure)
+  // The trap message will contain the reason in descriptive text format.
+  //
+  // `submitAndExecute` is subject to ingress message inspection.
+  // Any call that would be trap for the above reasons will be rejected during
+  // inspection. This will lead to an http 500 error. The caller will not be
+  // able to learn the specific reason why the call failed.
+  // 
+  // The aggregator does not check if the accounts exist, if the caller has
+  // access to the accounts or if there are sufficient funds. Those kind of
+  // errors will only be caught later during processing in the ledger. 
+  // 
+  // Backwards compatibility:
+  // In the future, new transaction types can be introduced as new variant
+  // cases in the `TxInput` argument.
+  //
+  // TODO: Does the return record allow extendability? Or do we need to make TxStatus an opt?
+
+  submitAndExecute : (TxInput) -> (record { GlobalId; TxStatus });
+
+  // QUERIES
+
+  // `txStatus` returns the current status of a transaction specified by its
+  // global id.
+  // If the transaction is neither queued nor pending then `null` is returned.
+  // More precisely, a `null` value means one of the following cases:
+  // * The transaction has been received by the ledger, or
+  // * The transaction has been dropped permanently, or
+  // * The transaction was never know to this aggregator.
+  //  
+  // In general, the process to find out about the status of a given global id
+  // is as follows:
+  // 1. Query the ledger for the given `gid`. That will return one of "processed/successful", "processed/failed" or "unkown". If it is "unknown" then go to step 2.
+  // 2. Query the aggregator. That will return one of "queued", "pending" or "null".
+  //    If it is "pending" then go back to step 1., i.e. query the ledger again after X milliseconds.
+  //    If it is "queued" then repeat step 2. after X milliseconds. This means we poll the aggregator and watch the queue distance go down until the response is different from "queued".
+  //    If it is "null" then go to step 3.
+  // 3. Query the ledger for the final answer. If the response from the ledger is "unknown" then we know the transaction has been permanently dropped and we can safely resubmit it (if still desired). 
+  //  
+  // Note that the status in the aggregator can go from "pending" back to "queued". This can happen if an inter-canister message carrying a batch fails.
+  // The aggregator will automatically resend the batch, so after a while the status will go to "pending" a second time.
+  // 
+  // Transactions can be permanently dropped due to the following reasons:
+  // * The aggregator was frozen (due to low cycle balance) and remained frozen for a certain time (~2 minutes) while the transaction was queued.
+  // * The aggregator ran out of cycles entirely (hence go uninstalled) while the transaction was queued.
+  // * The communication from the aggregator's subnet to the ledger's subnet was interrupted for longer than a certain time (~2 minutes).
+  // * The aggregator is forcefully upgraded or reinstalled while the transaction was queued. 
+  // 
+  // Backwards compatibility:
+  // In the future, if a new structure of global id is introduced then we need a new `txStatus` function.
+  // New variant cases can be introduced in `TxStatus` because the return value is an `opt`. 
+  // Old code will then see `null` for any new variant case.
+  //
+  // The function will trap if the nats in global id are larger than 64 bits.
+  //
+  // TODO: does returning null if the defined cases interfere with upgradability?
+  // TODO: can a query be rejected? Shall we reject instead of returning null in any of the cases?
+  txStatus : (GlobalId) -> (opt TxStatus) query;
+
+  // If submitAndExecute return an http 500 error (does not pass inspection) then the caller does not know the reason.
+  // To find out the reason the caller can call `submitDryRun` with the same argument.
+  // When querying (in query mode) then inspection will not run.
+  // Instead, the call will trap with a descriptive error message.
+  submitDryRun : (TxInput) -> () query;
 };
