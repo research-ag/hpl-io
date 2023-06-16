@@ -26,7 +26,9 @@ type TxInput = variant { ftTransfer : FtTransfer };
 // optional. Old code will not specify the new field and it will be set to
 // null by Candid.
 // For example, we can later introduce an optional `nonce` field that can 
-// be used for idempotency if desired.
+// be used for idempotency if desired. 
+// As another example, we can later introduce optional `fee` field that
+// be used to select one from several fee modes if desired.
 type FtTransfer = record {
   from : AccountReference;
   to : AccountReference;
@@ -68,9 +70,14 @@ type GlobalId = record { nat; nat };
 // `pending` means that the transaction has been placed in a batch and the
 // batch has been sent to the ledger, but the aggregator has not yet received
 // the response, i.e. does not know for sure whether the batch was received.
+// `unknown` means one of the following:
+// * the transaction has been received by the ledger
+// * the transactions has been dropped permanently
+// * the transaction was never known by this aggregator
 type TxStatus = variant {
   queued : nat;
   pending;
+  unkown;
 };
 
 // API
@@ -114,32 +121,24 @@ service : (principal, nat) -> {
   // Backwards compatibility:
   // In the future, new transaction types can be introduced as new variant
   // cases in the `TxInput` argument.
-  // New variant cases can be introduced inside `TxStatus` because the return
-  // value is wrapped in an `opt`. Old code will then see `null` for any new
-  // variant cases that it does not know about.
   // New fields can be added to the returned record. Old code will not see 
   // those fields.
   // If structure of GlobalId changes then it is advisable to introduce a new
   // function replacing this `submitAndExecute`.
-  submitAndExecute : (TxInput) -> (record { GlobalId; opt TxStatus });
+  submitAndExecute : (TxInput) -> (record { GlobalId; TxStatus });
 
   // QUERIES
 
   // `txStatus` returns the current status of a transaction specified by its
   // global id.
-  // If the transaction is neither queued nor pending then `null` is returned.
-  // More precisely, a `null` value means one of the following cases:
-  // * The transaction has been received by the ledger, or
-  // * The transaction has been dropped permanently, or
-  // * The transaction was never known to this aggregator.
   //  
   // In general, the process to find out about the status of a given global id
   // is as follows:
-  // 1. Query the ledger for the given `gid`. That will return one of "processed/successful", "processed/failed" or "unkown". If it is "unknown" then go to step 2.
-  // 2. Query the aggregator. That will return one of "queued", "pending" or "null".
+  // 1. Query the ledger for the given `gid`. That will return one of "processed/successful", "processed/failed" or "unkown". If it is "unknown" to the ledger then go to step 2.
+  // 2. Query the aggregator. That will return one of "queued", "pending" or "unknown".
   //    If it is "pending" then go back to step 1., i.e. query the ledger again after X milliseconds.
   //    If it is "queued" then repeat step 2. after X milliseconds. This means we poll the aggregator and watch the queue distance go down until the response is different from "queued".
-  //    If it is "null" then go to step 3.
+  //    If it is "unknown" then go to step 3.
   // 3. Query the ledger for the final answer. If the response from the ledger is "unknown" then we know the transaction has been permanently dropped and we can safely resubmit it (if still desired). 
   //  
   // Note that the status in the aggregator can go from "pending" back to "queued". This can happen if an inter-canister message carrying a batch fails.
@@ -155,17 +154,13 @@ service : (principal, nat) -> {
   // The function will trap if the nats in global id are larger than 64 bits.
   //
   // Backwards compatibility:
-  // New variant cases can be introduced inside `TxStatus` because the return
-  // value is wrapped in an `opt`. Old code will then see `null` for any new
-  // variant cases that it does not know about.
+  // New fields can be added to the returned record. Old code will not see 
+  // those fields.
   // If structure of GlobalId changes then it is advisable to introduce a new
   // function replacing this `txStatus`.
-  //
-  // TODO: does returning null in the defined cases above interfere with upgradability?
-  // TODO: can a query be rejected? Shall we reject instead of returning null in any of the cases?
-  txStatus : (GlobalId) -> (opt TxStatus) query;
+  txStatus : (GlobalId) -> (record { TxStatus }) query;
 
-  // If submitAndExecute return an http 500 error (does not pass inspection) then the caller does not know the reason.
+  // If submitAndExecute returns an http 500 error (does not pass inspection) then the caller does not know the reason.
   // To find out the reason the caller can call `submitDryRun` with the same argument.
   // When querying (in query mode) then inspection will not run.
   // Instead, the call will trap with a descriptive error message.
