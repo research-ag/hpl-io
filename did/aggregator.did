@@ -20,6 +20,13 @@ type TxInput = variant { ftTransfer : FtTransfer };
 // sending account.
 // `memo` is a vector of blobs which can be used to attach metadata that is 
 // relevant for the sender or receiver.
+//
+// Backward compatibility:
+// New fields can be added to the record in the future as long as they are
+// optional. Old code will not specify the new field and it will be set to
+// null by Candid.
+// For example, we can later introduce an optional `nonce` field that can 
+// be used for idempotency if desired.
 type FtTransfer = record {
   from : AccountReference;
   to : AccountReference;
@@ -47,10 +54,9 @@ type AccountReference = variant {
   mint;
 };
 
-// Transactions receive a globally unique id when they are submitted to the 
-// aggregator. The global id remains with the transaction through its entire
-// lifetime. Global ids are never re-used, even if the transaction fails in 
-// processing. 
+// Transactions are assigned a globally unique id when they are submitted to the
+// aggregator. The global id is valid forever and will never be re-used for a 
+// different transaction, even if the transaction fails in processing.
 type GlobalId = record { nat; nat };
 
 // The status of a transaction at the aggregator can be either queued or 
@@ -97,9 +103,9 @@ service : (principal, nat) -> {
   // The trap message will contain the reason in descriptive text format.
   //
   // `submitAndExecute` is subject to ingress message inspection.
-  // Any call that would be trap for the above reasons will be rejected during
-  // inspection. This will lead to an http 500 error. The caller will not be
-  // able to learn the specific reason why the call failed.
+  // Any call that would trap for any of the above reasons will be rejected 
+  // during inspection. This will lead to an http 500 error. The caller will
+  // not be able to learn the specific reason why the call failed.
   // 
   // The aggregator does not check if the accounts exist, if the caller has
   // access to the accounts or if there are sufficient funds. Those kind of
@@ -108,10 +114,14 @@ service : (principal, nat) -> {
   // Backwards compatibility:
   // In the future, new transaction types can be introduced as new variant
   // cases in the `TxInput` argument.
-  //
-  // TODO: Does the return record allow extendability? Or do we need to make TxStatus an opt?
-
-  submitAndExecute : (TxInput) -> (record { GlobalId; TxStatus });
+  // New variant cases can be introduced inside `TxStatus` because the return
+  // value is wrapped in an `opt`. Old code will then see `null` for any new
+  // variant cases that it does not know about.
+  // New fields can be added to the returned record. Old code will not see 
+  // those fields.
+  // If structure of GlobalId changes then it is advisable to introduce a new
+  // function replacing this `submitAndExecute`.
+  submitAndExecute : (TxInput) -> (record { GlobalId; opt TxStatus });
 
   // QUERIES
 
@@ -121,7 +131,7 @@ service : (principal, nat) -> {
   // More precisely, a `null` value means one of the following cases:
   // * The transaction has been received by the ledger, or
   // * The transaction has been dropped permanently, or
-  // * The transaction was never know to this aggregator.
+  // * The transaction was never known to this aggregator.
   //  
   // In general, the process to find out about the status of a given global id
   // is as follows:
@@ -139,16 +149,19 @@ service : (principal, nat) -> {
   // * The aggregator was frozen (due to low cycle balance) and remained frozen for a certain time (~2 minutes) while the transaction was queued.
   // * The aggregator ran out of cycles entirely (hence go uninstalled) while the transaction was queued.
   // * The communication from the aggregator's subnet to the ledger's subnet was interrupted for longer than a certain time (~2 minutes).
-  // * The aggregator is forcefully upgraded or reinstalled while the transaction was queued. 
+  // * The aggregator was upgraded while the transaction was queued and the upgrade took longer than a certain time (~2 minutes).
+  // * The aggregator was upgraded while the transaction was queued and discarded its state.
   // 
-  // Backwards compatibility:
-  // In the future, if a new structure of global id is introduced then we need a new `txStatus` function.
-  // New variant cases can be introduced in `TxStatus` because the return value is an `opt`. 
-  // Old code will then see `null` for any new variant case.
-  //
   // The function will trap if the nats in global id are larger than 64 bits.
   //
-  // TODO: does returning null if the defined cases interfere with upgradability?
+  // Backwards compatibility:
+  // New variant cases can be introduced inside `TxStatus` because the return
+  // value is wrapped in an `opt`. Old code will then see `null` for any new
+  // variant cases that it does not know about.
+  // If structure of GlobalId changes then it is advisable to introduce a new
+  // function replacing this `txStatus`.
+  //
+  // TODO: does returning null in the defined cases above interfere with upgradability?
   // TODO: can a query be rejected? Shall we reject instead of returning null in any of the cases?
   txStatus : (GlobalId) -> (opt TxStatus) query;
 
@@ -158,3 +171,8 @@ service : (principal, nat) -> {
   // Instead, the call will trap with a descriptive error message.
   submitDryRun : (TxInput) -> () query;
 };
+
+// The protocol is designed such that the aggregator can discard its state during upgrades.
+// Transactions in the queue will be dropped.
+// The protocol is designed such that users can determine a dropped transaction with certainty.
+// They can then resubmit the transaction to the upgraded aggregator or to a different aggregator.
