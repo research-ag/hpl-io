@@ -171,12 +171,6 @@ service : (principal, nat) -> {
   // transactions. And if the frontend does not know about the cancelation
   // feature then none of its transactions will be in that state.
   txStatus : (GlobalId) -> (record { opt TxStatus }) query;
-
-  // If submitAndExecute returns an http 500 error because it does not pass inspection then the caller does not know the reason.
-  // To find out the reason the caller can call `submitDryRun` with the same argument.
-  // When querying (in query mode) then inspection will not run.
-  // Instead, the call will trap with a descriptive error message.
-  submitDryRun : (TxInput) -> () query;
 };
 
 // The protocol is designed such that the aggregator can discard its state during upgrades.
