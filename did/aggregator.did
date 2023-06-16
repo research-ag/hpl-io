@@ -85,50 +85,45 @@ type TxStatus = variant {
 service : (principal, nat) -> {
   // UPDATES
 
-  // `submitAndExecute` submits a transaction to the aggregator.
-  // The aggregator returns the issued global id and the TxStatus immediately
-  // after enqueueing the transaction. The purpose of returning TxStatus is so
-  // that the caller knows the queue position without having to make another
-  // call.
-  //
+  // `submitAndExecute` submits a transaction to the aggregator.  The aggregator
+  // returns the issued global id and the TxStatus immediately after enqueueing
+  // the transaction. The purpose of returning TxStatus is so that the caller
+  // knows the queue position without having to make another call.
+  // 
   // The returned TxStatus is always `queued` and never `pending`, i.e.
   // returning a TxStatus variant instead of only the queue position has some
   // redundancy. The reason to do so is to simplify the calling code though
   // unification. The assumption is that the calling code will poll the 
   // `txStatus` query function after submission. Hence the first `TxStatus` 
-  // returned by `submitAndExecute` can be fed into the same processing logic
-  // as the return values obtained in the subsequent polling.
-  //
-  // `submitAndExecute` will trap in the following cases:
-  // * A `SubId`, `VirId` or `assetId` is larger than 64 bits
-  // * `amount` is larger than 128 bits
-  // * The principal in `vir` is longer than 29 bytes or otherwise invalid
-  // * The memo vector is too long (too many entries)
-  // * An individual memo entry is too long (too many bytes)
-  // * The combined length of all memos is too large (too many bytes)
-  // * The internal queue is full (back pressure)
-  // The trap message will contain the reason in descriptive text format.
-  //
-  // `submitAndExecute` is subject to ingress message inspection.
-  // Any call that would trap for any of the above reasons will be rejected 
-  // during inspection. This will lead to an http 500 error. The caller will
-  // not be able to learn the specific reason why the call failed.
+  // returned by `submitAndExecute` can be fed into the same processing logic as
+  // the return values obtained in the subsequent polling.
+  // 
+  // `submitAndExecute` will trap in the following cases: * A `SubId`, `VirId`
+  // or `assetId` is larger than 64 bits * `amount` is larger than 128 bits *
+  // The principal in `vir` is longer than 29 bytes or otherwise invalid * The
+  // memo vector is too long (too many entries) * An individual memo entry is
+  // too long (too many bytes) * The combined length of all memos is too large
+  // (too many bytes) * The internal queue is full (back pressure) The trap
+  // message will contain the reason in descriptive text format.
+  // 
+  // `submitAndExecute` is subject to ingress message inspection.  Any call that
+  // would trap for any of the above reasons will be rejected during inspection.
+  // This will lead to an http 500 error. The caller will not be able to learn
+  // the specific reason why the call failed.
   // 
   // The aggregator does not check if the accounts exist, if the caller has
   // access to the accounts or if there are sufficient funds. Those kind of
   // errors will only be caught later during processing in the ledger. 
   // 
-  // Backwards compatibility:
-  // In the future, new transaction types can be introduced as new variant
-  // cases in the `TxInput` argument.
-  // New fields can be added to the returned record. Old code will not see 
-  // those fields.
-  // If structure of GlobalId changes then it is advisable to introduce a new
-  // function replacing this `submitAndExecute`.
-  // New cases can be added to the TxStatus variant because it is wrapped in 
-  // an `opt` (see also the `txStatus` query below).
+  // Backwards compatibility: In the future, new transaction types can be
+  // introduced as new variant cases in the `TxInput` argument.  New fields can
+  // be added to the returned record. Old code will not see those fields.  If
+  // structure of GlobalId changes then it is advisable to introduce a new
+  // function replacing this `submitAndExecute`.  New cases can be added to the
+  // TxStatus variant because it is wrapped in an `opt` (see also the `txStatus`
+  // query below).
   submitAndExecute : (TxInput) -> (record { GlobalId; opt TxStatus });
-
+  
   // QUERIES
 
   // `txStatus` returns the current status of a transaction specified by its
@@ -136,44 +131,65 @@ service : (principal, nat) -> {
   //  
   // In general, the process to find out about the status of a given global id
   // is as follows:
-  // 1. Query the ledger for the given `gid`. That will return one of "processed/successful", "processed/failed" or "unkown". If it is "unknown" to the ledger then go to step 2.
+  //
+  // 1. Query the ledger for the given `gid`. That will return one of
+  // "processed/successful", "processed/failed" or "unkown". If it is "unknown"
+  // to the ledger then go to step 2.
+  // 
   // 2. Query the aggregator. That will return one of "queued", "pending" or "unknown".
-  //    If it is "pending" then go back to step 1., i.e. query the ledger again after X milliseconds.
-  //    If it is "queued" then repeat step 2. after X milliseconds. This means we poll the aggregator and watch the queue distance go down until the response is different from "queued".
+  //    If it is "pending" then go back to step 1., i.e. query the ledger again
+  //    after X milliseconds.
+  //    If it is "queued" then repeat step 2. after X milliseconds. This means
+  //    we poll the aggregator and watch the queue distance go down until the
+  //    response is different from "queued".
   //    If it is "unknown" then go to step 3.
-  // 3. Query the ledger for the final answer. If the response from the ledger is "unknown" then we know the transaction has been permanently dropped and we can safely resubmit it (if still desired). 
+  //
+  // 3. Query the ledger for the final answer. If the response from the ledger
+  // is "unknown" then we know the transaction has been permanently dropped and
+  // we can safely resubmit it (if still desired). 
   //  
-  // Note that the status in the aggregator can go from "pending" back to "queued". This can happen if an inter-canister message carrying a batch fails.
-  // The aggregator will automatically resend the batch, so after a while the status will go to "pending" a second time.
+  // Note that the status in the aggregator can go from "pending" back to
+  // "queued". This can happen if an inter-canister message carrying a batch
+  // fails.  The aggregator will automatically resend the batch, so after a
+  // while the status will go to "pending" a second time.
   // 
   // Transactions can be permanently dropped due to the following reasons:
-  // * The aggregator was frozen (due to low cycle balance) and remained frozen for a certain time (~2 minutes) while the transaction was queued.
-  // * The aggregator ran out of cycles entirely (hence got uninstalled) while the transaction was queued.
-  // * The communication from the aggregator's subnet to the ledger's subnet was interrupted for longer than a certain time (~2 minutes).
-  // * The aggregator was upgraded while the transaction was queued and the upgrade took longer than a certain time (~2 minutes).
-  // * The aggregator was upgraded while the transaction was queued and discarded its state.
+  // * The aggregator was frozen (due to low cycle balance) and remained frozen
+  // for a certain time (~2 minutes) while the transaction was queued.
+  // * The aggregator ran out of cycles entirely (hence got uninstalled) while
+  // the transaction was queued.
+  // * The communication from the aggregator's subnet to the ledger's subnet was
+  // interrupted for longer than a certain time (~2 minutes).
+  // * The aggregator was upgraded while the transaction was queued and the
+  // upgrade took longer than a certain time (~2 minutes).
+  // * The aggregator was upgraded while the transaction was queued and
+  // discarded its state.
   // 
   // The function will trap if the nats in global id are larger than 64 bits.
+  // 
+  // Backwards compatibility: 
   //
-  // Backwards compatibility:
-  // New fields can be added to the returned record. Old code will not see 
-  // those fields.
-  // If structure of GlobalId changes then it is advisable to introduce a new
-  // function replacing this `txStatus`.
-  // New cases can be added to the TxStatus variant because it is wrapped in 
-  // an `opt`. Old code that does not know the new case will see the whole
-  // status as `null`. 
-  // For example, if we want to add the ability to cancel transactions that 
-  // are already in the queue then we can add a case `canceled` to the TxStatus
-  // variant. An old frontend that is not aware of the case `canceled` would 
-  // see `null` as the status if it queries a transaction that is in that state.
-  // However, this is not a problem because a frontend queries only its own 
+  // New fields can be added to the returned record.  Old code will not see
+  // those fields. 
+  // 
+  // If the internal structure of GlobalId changes then it is advisable to
+  // introduce a new function replacing this `txStatus`.
+  // 
+  // New cases can be added to the TxStatus variant because it is wrapped in an
+  // `opt`. Old code that does not know the new case will see the whole status
+  // as `null`.  
+  // 
+  // For example, if we want to add the ability to cancel transactions that are
+  // already in the queue then we can add a case `canceled` to the TxStatus
+  // variant. An old frontend that is not aware of the case `canceled` would see
+  // `null` as the status if it queries a transaction that is in that state.
+  // However, this is not a problem because a frontend queries only its own
   // transactions. And if the frontend does not know about the cancelation
   // feature then none of its transactions will be in that state.
-  txStatus : (GlobalId) -> (record { opt TxStatus }) query;
-};
-
-// The protocol is designed such that the aggregator can discard its state during upgrades.
-// Transactions in the queue will be dropped.
-// The protocol is designed such that users can determine a dropped transaction with certainty.
-// They can then resubmit the transaction to the upgraded aggregator or to a different aggregator.
+  txStatus : (GlobalId) -> (record { opt TxStatus }) query; };
+  
+// The protocol is designed such that the aggregator can discard its state
+// during upgrades. Transactions in the queue will be dropped. The protocol is
+// designed such that users can determine a dropped transaction with certainty.
+// They can then resubmit the transaction to the upgraded aggregator or to a
+// different aggregator.
