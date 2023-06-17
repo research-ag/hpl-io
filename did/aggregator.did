@@ -126,6 +126,11 @@ service : (principal, nat) -> {
   
   // QUERIES
 
+  /*
+     sdff
+     asfsaf
+
+  */
   // `txStatus` returns the current status of a transaction specified by its
   // global id.
   //  
