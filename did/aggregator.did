@@ -9,6 +9,17 @@ type VirId = nat;
 // TxInput describes a transaction. 
 // Currently there is only one transaction type, `ftTransfer`.
 // In the future new transaction types will be introduced.
+//
+// The information in TxInput can be seen as _instructions_ to carry out a
+// transaction rather than the transaction itself. When processed, the
+// instructions will lead to an actual transaction. A full description of the
+// resulting transaction can, in certain cases, require more information than 
+// what was specified in the intructions.  For example, TxInput can specify a
+// `max` amount which will be translated to the real amount available only at
+// processing time.  As another example, the sender's principal is not in
+// TxInput because it is implicitly specified as the "caller" who submit the
+// TxInput. But it would of course be required in a complete description of the
+// transaction.
 type TxInput = variant { ftTransfer : FtTransfer };
 
 // FtTransfer describes a fungible token transfer from one account to another.
@@ -23,12 +34,14 @@ type TxInput = variant { ftTransfer : FtTransfer };
 //
 // Backward compatibility:
 // New fields can be added to the record in the future as long as they are
-// optional. Old code will not specify the new field and it will be set to
+// optional. Old client code will not specify the new field and it will be set to
 // null by Candid.
 // For example, we can later introduce an optional `nonce` field that can 
-// be used for idempotency if desired. 
-// As another example, we can later introduce optional `fee` field that
-// be used to select one from several fee modes if desired.
+// be used to enforce idempotency if desired. The default is `null` which
+// means idempotency is not enforced. 
+// As another example, we can later introduce an optional `fee` field that
+// can be used to select one from several fee modes if desired. The default
+// is `null` which means to use the ledger's default fee mode.
 type FtTransfer = record {
   from : AccountReference;
   to : AccountReference;
@@ -50,19 +63,23 @@ type FtTransfer = record {
 // tokens. Sending from `mint` mints tokens. In both cases, the caller must be
 // the controller of the given asset id or the transfer will fail. Only the
 // controller can mint and burn tokens.
+// 
+// Backward compatibility:
+// Since this is an input (i.e. argument), new variant cases can later be added.
+// Old client will simply never supply the new cases. 
 type AccountReference = variant {
   sub : SubId;
   vir : record { principal; VirId };
   mint;
 };
 
-// Transactions are assigned a globally unique id when they are submitted to the
-// aggregator. The global id is valid forever and will never be re-used for a 
-// different transaction, even if the transaction fails in processing.
+// Transactions are assigned a globally unique id (gid) when they are submitted
+// to the aggregator. The global id is valid forever and will never be re-used
+// for a different transaction, even if the transaction fails in processing.
 type GlobalId = record { nat; nat };
 
-// The status of a transaction at the aggregator can be either queued or 
-// pending. 
+// The status of a gid at the aggregator can be either queued, pending or
+// unavailable.
 // `queued` means that the transaction is in the queue in the aggregator
 // and has not yet been placed into a batch. In this case the status specifies
 // the distance from the head of the queue measured in the number of 
@@ -70,14 +87,35 @@ type GlobalId = record { nat; nat };
 // `pending` means that the transaction has been placed in a batch and the
 // batch has been sent to the ledger, but the aggregator has not yet received
 // the response, i.e. does not know for sure whether the batch was received.
-// `unknown` means one of the following:
-// * the transaction has been received by the ledger
-// * the transactions has been dropped permanently
+// `unavailable` means one of the following:
+// * the transaction has been received by the ledger and is no longer available
+// at the aggregator
+// * the transactions has been dropped permanently, i.e. has not been received 
+// by the ledger, is no longer available at aggregator and will not be retried
 // * the transaction was never known by this aggregator
-type TxStatus = variant {
-  queued : nat;
-  pending;
-  unkown;
+//
+// Technical note: the last case means that either the stream id in the gid is
+// not the current stream of the aggregator or the stream id is correct but the
+// stream position lies in the future.
+//
+// The protocol is designed such that the aggregator can discard its state
+// during upgrades. Transactions in the queue will be dropped. The status of a
+// gid that was issued before the upgrade will be `unavailable` after the
+// upgrade.  However, the protocol is designed such that users can determine
+// with certainty whether they have to resubmit the transaction or not by also
+// querying the ledger.
+//
+// We call this type `GidStatus` rather than `GidStatus` to emphasize that the
+// status is not dependent on the TxInput and that the status reveals no
+// information about the TxInput. This is different from querying the ledger for
+// transaction status. The ledger can return success or failure which depends on
+// the actual TxInput, not only the gid.  When we query the aggregator for
+// GidStatus we only learn about the progress of communication between
+// aggregator and ledger which is only a function of gid, not the TxInput.
+type GidStatus = variant { 
+  queued : nat; 
+  pending; 
+  unavailable; 
 };
 
 // API
@@ -85,18 +123,18 @@ type TxStatus = variant {
 service : (principal, nat) -> {
   // UPDATES
 
-  // `submitAndExecute` submits a transaction to the aggregator.  The aggregator
-  // returns the issued global id and the TxStatus immediately after enqueueing
-  // the transaction. The purpose of returning TxStatus is so that the caller
+  // `submitAndExecute` submits a transaction to the aggregator. The aggregator
+  // returns the issued global id and the GidStatus immediately after enqueueing
+  // the transaction. The purpose of returning GidStatus is so that the caller
   // knows the queue position without having to make another call.
   // 
-  // The returned TxStatus is always `queued` and never `pending`, i.e.
-  // returning a TxStatus variant instead of only the queue position has some
-  // redundancy. The reason to do so is to simplify the calling code though
-  // unification. The assumption is that the calling code will poll the 
-  // `txStatus` query function after submission. Hence the first `TxStatus` 
-  // returned by `submitAndExecute` can be fed into the same processing logic as
-  // the return values obtained in the subsequent polling.
+  // The returned GidStatus is always `queued` (never `pending` or
+  // `unavailable`), i.e. returning a GidStatus variant instead of only the queue
+  // position has some redundancy. The reason to do so is to simplify the
+  // calling code through unification. The assumption is that the calling code
+  // will poll the `gidStatus` query function after submission. Hence the first
+  // `GidStatus` returned by `submitAndExecute` can be fed into the same
+  // processing logic as the return values obtained in the subsequent polling.
   // 
   // `submitAndExecute` will trap in the following cases: * A `SubId`, `VirId`
   // or `assetId` is larger than 64 bits * `amount` is larger than 128 bits *
@@ -117,59 +155,39 @@ service : (principal, nat) -> {
   // 
   // Backwards compatibility: In the future, new transaction types can be
   // introduced as new variant cases in the `TxInput` argument.  New fields can
-  // be added to the returned record. Old code will not see those fields.  If
-  // structure of GlobalId changes then it is advisable to introduce a new
-  // function replacing this `submitAndExecute`.  New cases can be added to the
-  // TxStatus variant because it is wrapped in an `opt` (see also the `txStatus`
-  // query below).
-  submitAndExecute : (TxInput) -> (record { GlobalId; opt TxStatus });
+  // be added to the returned record. Old client code will not see those fields.
+  // If the structure of GlobalId changes then it is advisable to introduce a
+  // new function replacing this `submitAndExecute`.  New cases can be added to
+  // the GidStatus variant because it is wrapped in an `opt` (see also the
+  // `gidStatus` query below).
+  submitAndExecute : (TxInput) -> (record { GlobalId; opt GidStatus });
   
   // QUERIES
 
-  /*
-     sdff
-     asfsaf
-
-  */
-  // `txStatus` returns the current status of a transaction specified by its
-  // global id.
-  //  
-  // In general, the process to find out about the status of a given global id
-  // is as follows:
+  // `gidStatus` returns the current status of a gid.
   //
-  // 1. Query the ledger for the given `gid`. That will return one of
-  // "processed/successful", "processed/failed" or "unkown". If it is "unknown"
-  // to the ledger then go to step 2.
-  // 
-  // 2. Query the aggregator. That will return one of "queued", "pending" or "unknown".
-  //    If it is "pending" then go back to step 1., i.e. query the ledger again
-  //    after X milliseconds.
-  //    If it is "queued" then repeat step 2. after X milliseconds. This means
-  //    we poll the aggregator and watch the queue distance go down until the
-  //    response is different from "queued".
-  //    If it is "unknown" then go to step 3.
+  // In general, the typical process to track a transaction after submission to
+  // the aggregator is as follows:
   //
-  // 3. Query the ledger for the final answer. If the response from the ledger
-  // is "unknown" then we know the transaction has been permanently dropped and
-  // we can safely resubmit it (if still desired). 
+  // 1. Query the aggregator for the gid. That will return one of "queued",
+  // "pending" or "unavailable".
+  //   If it is "pending" or "unavailable" then query the ledger in step 2.
+  //   If it is "queued" then repeat step 1. after X milliseconds. This means
+  //   we poll the aggregator and watch the queue distance go down until the
+  //   response is different from "queued".
+  //
+  // 2. Query the ledger for the given `gid`. That will return one of
+  // "successful", "failed" or "awaited". 
+  //   If it is "successful" or "failed" then the transaction has been processed
+  //   and that is the final state.
+  //   If it is "awaited" then repeat step 2. after X milliseconds. This means
+  //   we poll the ledger until the transaction is processed.
+  //
+  // The above merely showcases the happy case. There are a number of edge cases
+  // that account for communication failures between aggregator and ledger on
+  // the IC level, frozen canisters, canister upgrades, etc. The full process
+  // can be seen in the README.
   //  
-  // Note that the status in the aggregator can go from "pending" back to
-  // "queued". This can happen if an inter-canister message carrying a batch
-  // fails.  The aggregator will automatically resend the batch, so after a
-  // while the status will go to "pending" a second time.
-  // 
-  // Transactions can be permanently dropped due to the following reasons:
-  // * The aggregator was frozen (due to low cycle balance) and remained frozen
-  // for a certain time (~2 minutes) while the transaction was queued.
-  // * The aggregator ran out of cycles entirely (hence got uninstalled) while
-  // the transaction was queued.
-  // * The communication from the aggregator's subnet to the ledger's subnet was
-  // interrupted for longer than a certain time (~2 minutes).
-  // * The aggregator was upgraded while the transaction was queued and the
-  // upgrade took longer than a certain time (~2 minutes).
-  // * The aggregator was upgraded while the transaction was queued and
-  // discarded its state.
-  // 
   // The function will trap if the nats in global id are larger than 64 bits.
   // 
   // Backwards compatibility: 
@@ -178,23 +196,19 @@ service : (principal, nat) -> {
   // those fields. 
   // 
   // If the internal structure of GlobalId changes then it is advisable to
-  // introduce a new function replacing this `txStatus`.
+  // introduce a new function replacing this `gidStatus`.
   // 
-  // New cases can be added to the TxStatus variant because it is wrapped in an
+  // New cases can be added to the GidStatus variant because it is wrapped in an
   // `opt`. Old code that does not know the new case will see the whole status
   // as `null`.  
   // 
   // For example, if we want to add the ability to cancel transactions that are
-  // already in the queue then we can add a case `canceled` to the TxStatus
+  // already in the queue then we can add a case `canceled` to the GidStatus
   // variant. An old frontend that is not aware of the case `canceled` would see
   // `null` as the status if it queries a transaction that is in that state.
   // However, this is not a problem because a frontend queries only its own
   // transactions. And if the frontend does not know about the cancelation
   // feature then none of its transactions will be in that state.
-  txStatus : (GlobalId) -> (record { opt TxStatus }) query; };
+  gidStatus : (GlobalId) -> (record { opt GidStatus }) query; 
+};
   
-// The protocol is designed such that the aggregator can discard its state
-// during upgrades. Transactions in the queue will be dropped. The protocol is
-// designed such that users can determine a dropped transaction with certainty.
-// They can then resubmit the transaction to the upgraded aggregator or to a
-// different aggregator.
