@@ -1,14 +1,21 @@
-// account has a type which defines what it can store
-// the only type available is `ft`
-type AccountState = variant { ft : FtState };
-type FtState = record { AssetId; nat };
+// common definitions with aggregator
 type AssetId = nat;
-
-// account is referenced by (owner, subid)
 type SubId = nat;
-
-// virtual account is referenced by (owner, virid)
 type VirId = nat;
+
+// Backward compatibility:
+//
+// TODO: Can additional variant cases be added?
+// Are the variants wrapped in opts?
+type AccountType = variant { ft : AssetId; };
+type AccountState = variant { ft : FtState };
+type FtState = record { AssetId; nat }; // pair (asset id, quantity)
+
+//
+type Expiration = variant {
+  None;
+  Timestamp : nat64;
+};
 
 // state of a virtual account from the perspective of the owner
 type VirtualAccountState = record {
@@ -16,10 +23,6 @@ type VirtualAccountState = record {
   backingAccount : SubId;
   accessPrincipal : principal;
   expiration : Expiration;
-};
-type Expiration = variant {
-  None;
-  Timestamp : nat64;
 };
 
 // state of a virtual account from the perspective of the remote principal
@@ -29,15 +32,14 @@ type RemoteState = record {
   expiration : Expiration;
 };
 
-type AccountType = variant { ft : AssetId; };
-
+//
 type OpenAccounts_Result = variant {
   ok : record { first : SubId };
   err : opt variant {
     NoSpaceForPrincipal;
     NoSpaceForSubaccount;
     InvalidArguments : text;
-      // UnknownFtAsset;
+      // "UnknownFtAsset"
   };
 };
 
@@ -46,9 +48,9 @@ type Open_Result = variant {
   err : opt variant {
     NoSpaceForAccount;
     InvalidArguments : text;
-      // MismatchInAsset;
-      // UnknownSubaccount; // means unknown backing subaccount
-      // InvalidExpirationTime;
+      // "MismatchInAsset"
+      // "UnknownSubaccount" means unknown backing subaccount
+      // "InvalidExpirationTime"
   };
 };
 
@@ -57,7 +59,7 @@ type Delete_Result = variant {
   err : opt variant {
     DeletedVirtualAccount; // means had already been deleted before
     InvalidArguments : text;
-      // UnknownVirtualAccount; 
+      // "UnknownVirtualAccount" 
   };
 };
 
@@ -85,19 +87,25 @@ type Update_Result = variant {
     DeletedVirtualAccount;
     InsufficientFunds;
     InvalidArguments : text;
-      // InvalidExpirationTime;
-      // MismatchInAsset;
-      // UnknownSubaccount;
-      // UnknownVirtualAccount;
+      // "InvalidExpirationTime"
+      // "MismatchInAsset"
+      // "UnknownSubaccount"
+      // "UnknownVirtualAccount"
   };
 };
 
 type TxStatus = record {
-  batch : nat;
-  status : variant {
-    unknown; // not yet seen or too old, batch = last batch processed
-    failed : opt ProcessingError; // failed, batch = batch in which the tx was received
-    succeeded : TxOutput; // suceeded, batch = batch in which the tx was received
+  // 0 : GidStatus at aggregator
+  // 1 : GidStatus at ledger
+  // 2 : Tx result
+  1 : opt variant {
+    awaited : Principal; // not yet received, return aggregator principal
+    processed; // received and processed
+    dropped; // will not be accepted anymore
+  };
+  2 : opt variant {
+    failed : opt ProcessingError; // failed
+    succeeded : TxOutput; // suceeded
   };
 };
 type TxOutput = variant {
@@ -112,30 +120,21 @@ type ProcessingError = variant {
     DeletedVirtualAccount;
     InsufficientFunds;
     InvalidArguments : text;
-      // MismatchInAsset;
-      // MismatchInRemotePrincipal; // no access
-      // NotAController;
-      // UnknownFtAsset;
-      // UnknownPrincipal;
-      // UnknownSubaccount;
-      // UnknownVirtualAccount;
-    // The following cannot happen in ftTransfer unless internal error:
-    //   NonZeroAssetSum; 
-    //   TooManyContributions;
-    //   TooManyFlows;
-    //   IncorrectOwnerIndex;
-    // The following is caught when submitting and is part of SubmitError
-    //   TooLargeAssetId;
-    //   TooLargeFtQuantity;
-    //   TooLargeMemo;
-    //   TooLargeSubaccountId;
-    //   TooLargeVirtualAccountId;
+      // "MismatchInAsset"
+      // "MismatchInRemotePrincipal", means no access
+      // "NotAController"
+      // "UnknownFtAsset"
+      // "UnknownPrincipal"
+      // "UnknownSubaccount"
+      // "UnknownVirtualAccount"
   };
 };
 
 type GlobalId = record { nat; nat };
 
 service : () -> {
+  // UPDATES
+
   // non-public account management queries 
   accountState : (SubId) -> (opt AccountState) query; 
     // access by owner
@@ -169,11 +168,17 @@ service : () -> {
   updateVirtualAccount : (VirId, VirtualAccountUpdate) -> (Update_Result); 
     // trap if caller unknown
 
-  // public queries
+  // QUERIES
+
   ftSupply : (AssetId) -> (opt nat) query;
     // null if assetid unknown
   ftController : (AssetId) -> (opt principal) query;
     // null if assetid unknown
   aggregators : () -> (vec principal) query; // list all aggregators
+
+  // If the stream id in GlobalId is not known, i.e. has not yet been issued, 
+  // then there must be an error on the side of the caller. In this case,
+  // txStatus returns `record { }` which means the options in the record are
+  // both null.
   txStatus : (GlobalId) -> (TxStatus) query;
 };

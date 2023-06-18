@@ -45,13 +45,14 @@ type TxInput = variant { ftTransfer : FtTransfer };
 type FtTransfer = record {
   from : AccountReference;
   to : AccountReference;
-  assetId : nat;
+  asset : AssetId;
   amount : variant {
     amount : nat;
     max;
   };
   memo : vec blob;
 };
+type AssetId = nat;
 
 // The sending or receiving account can be an account, virtual account, or
 // the "mint".
