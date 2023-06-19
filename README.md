@@ -182,29 +182,31 @@ We ignore the `null` status at the ledger because it can only happen with a fron
 
 ```mermaid
 flowchart TD
-QA["queued:n/awaited"] -->|"aggregator<br>resets state<br>(orderly or not)"| UA["unavailable/awaited"]
-UA -->|ledger<br>closes stream| UD2["unavailable/dropped"]
+QA["queued/awaited"] -->|"aggregator<br>resets state<br>(orderly or not)"| UA["unknown/awaited"]
+UA -->|ledger<br>closes stream| UD2["unknown/dropped"]
 QA -->|batch sent<br>by aggregator| PA["pending/awaited"]
-QA -->|"new n <= old n"| QA
-PA -->|aggregator<br>reinstall| UA2["unavailable/awaited"]
+PA -->|aggregator<br>force deletion| UA2["unknown/awaited"]
 UA2 -->|pending batch<br>was not delivered| UD2
-UA2 -->|pending batch<br>was delivered| UP2["unavailable/processed"]
+UA2 -->|pending batch<br>was delivered| UP2["unknown/processed"]
 PA -->|batch received<br>by ledger| PP["pending/processed"]
 PA -->|batch undelivered,<br>error received<br>by aggregator| QA
-PP -->|aggregator reinstall| UP2
-PP -->|response received<br>by aggregator| UP["unavailable/processed"]
+PP -->|aggregator<br>wipe state| UP
+PP -->|response received<br>by aggregator| P["processed/processed"]
 PA -->|keep-alive<br>timeout| PD["pending/dropped"]
-QA -->|keep-alive<br>timeout| QD["queued:n/dropped"]
-PD -->|batch rejected by ledger,<br>response received<br>by aggregator| UD
-QD -->|batch rejected by ledger,<br>response received<br>by aggregator| UD["unavailable/dropped"]
+QA -->|keep-alive<br>timeout| QD["queued/dropped"]
+PD -->|batch rejected by ledger,<br>response received<br>by aggregator| D
+QD -->|batch rejected by ledger,<br>response received<br>by aggregator| D["dropped/dropped"]
+P --> UP["unknown/processed"]
+D --> UD["unknown/dropped"]
+
 
 
 classDef green fill:#9f6
 classDef orange fill:#f96
 classDef red fill:#f77
-class QD,PD,UD red
-class UA,UA2,UD2,UP2 orange
-class QA,PA,PP,UP green
+class QA,PA,PP,P,UP green
+class UA,UD2,UA2,UP2 orange
+class QD,PD,D,UD red
 ```
 
 The orange and red colors symbolize the paths that involve a reset in the communication between aggregator and ledger, i.e. a change of stream id.
