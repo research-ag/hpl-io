@@ -224,6 +224,7 @@ class L3,R5,D3,P4 red
 Notes:
 * The diagram starts at the top with a query to the ledger. This is necessary if we do not know anything about the gid. If we already know the principal of the aggregator from which it was obtained then we can go directly to step 2 where the green path starts.
 * The red path only happens if the aggregator has gone through an upgrade and lost its state.
+* The protocol is designed such that users can determine with certainty whether they have to resubmit the transaction or not. This is the case even if the aggregator loses its state.
 
 ## Detailed discussion of edge cases (WIP, do not read)
 #### Edge cases

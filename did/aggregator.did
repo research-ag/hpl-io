@@ -79,44 +79,25 @@ type AccountReference = variant {
 // for a different transaction, even if the transaction fails in processing.
 type GlobalId = record { nat; nat };
 
-// The status of a gid at the aggregator can be either queued, pending or
-// unavailable.
-// `queued` means that the transaction is in the queue in the aggregator
-// and has not yet been placed into a batch. In this case the status specifies
-// the distance from the head of the queue measured in the number of 
-// transactions that come before it.
-// `pending` means that the transaction has been placed in a batch and the
-// batch has been sent to the ledger, but the aggregator has not yet received
-// the response, i.e. does not know for sure whether the batch was received.
-// `unavailable` means one of the following:
-// * the transaction has been received by the ledger and is no longer available
-// at the aggregator
-// * the transactions has been dropped permanently, i.e. has not been received 
-// by the ledger, is no longer available at aggregator and will not be retried
-// * the transaction was never known by this aggregator
+// See README.md for an explanation of the status states.
 //
-// Technical note: the last case means that either the stream id in the gid is
-// not the current stream of the aggregator or the stream id is correct but the
-// stream position lies in the future.
+// The function traps if the stream id in the gid is the current one but
+// the stream position lies in the future. Because then the aggregator know
+// for sure that the gid was never issued.
 //
-// The protocol is designed such that the aggregator can discard its state
-// during upgrades. Transactions in the queue will be dropped. The status of a
-// gid that was issued before the upgrade will be `unavailable` after the
-// upgrade.  However, the protocol is designed such that users can determine
-// with certainty whether they have to resubmit the transaction or not by also
-// querying the ledger.
-//
-// We call this type `GidStatus` rather than `GidStatus` to emphasize that the
+// We call this type `GidStatus` rather than `TxStatus` to emphasize that the
 // status is not dependent on the TxInput and that the status reveals no
 // information about the TxInput. This is different from querying the ledger for
 // transaction status. The ledger can return success or failure which depends on
-// the actual TxInput, not only the gid.  When we query the aggregator for
-// GidStatus we only learn about the progress of communication between
-// aggregator and ledger which is only a function of gid, not the TxInput.
+// the actual TxInput, not only the gid. When we query the aggregator for
+// GidStatus we learn about the progress of communication between aggregator and
+// ledger which is only a function of gid, not the TxInput.
 type GidStatus = variant { 
   queued : nat; 
   pending; 
-  unavailable; 
+  processed;
+  dropped;
+  unknown;
 };
 
 // API
@@ -129,21 +110,23 @@ service : (principal, nat) -> {
   // the transaction. The purpose of returning GidStatus is so that the caller
   // knows the queue position without having to make another call.
   // 
-  // The returned GidStatus is always `queued` (never `pending` or
-  // `unavailable`), i.e. returning a GidStatus variant instead of only the queue
-  // position has some redundancy. The reason to do so is to simplify the
-  // calling code through unification. The assumption is that the calling code
-  // will poll the `gidStatus` query function after submission. Hence the first
-  // `GidStatus` returned by `submitAndExecute` can be fed into the same
-  // processing logic as the return values obtained in the subsequent polling.
+  // The returned GidStatus is always `queued` (never any of the other cases),
+  // i.e. returning a GidStatus variant instead of only the queue position has
+  // some redundancy. The reason to do so is to simplify the calling code
+  // through unification. The assumption is that the calling code will poll the
+  // `gidStatus` query function after submission. Hence the first `GidStatus`
+  // returned by `submitAndExecute` can be fed into the same processing logic as
+  // the return values obtained in the subsequent polling.
   // 
-  // `submitAndExecute` will trap in the following cases: * A `SubId`, `VirId`
-  // or `assetId` is larger than 64 bits * `amount` is larger than 128 bits *
-  // The principal in `vir` is longer than 29 bytes or otherwise invalid * The
-  // memo vector is too long (too many entries) * An individual memo entry is
-  // too long (too many bytes) * The combined length of all memos is too large
-  // (too many bytes) * The internal queue is full (back pressure) The trap
-  // message will contain the reason in descriptive text format.
+  // `submitAndExecute` will trap in the following cases: 
+  // * A `SubId`, `VirId` or `assetId` is larger than 64 bits 
+  // * `amount` is larger than 128 bits 
+  // * The principal in `vir` is longer than 29 bytes or otherwise invalid 
+  // * The memo vector is too long (too many entries) 
+  // * An individual memo entry is too long (too many bytes) 
+  // * The combined length of all memos is too large (too many bytes) 
+  // * The internal queue is full (back pressure) 
+  // The trap message will contain the reason in descriptive text format.
   // 
   // `submitAndExecute` is subject to ingress message inspection.  Any call that
   // would trap for any of the above reasons will be rejected during inspection.
@@ -167,27 +150,8 @@ service : (principal, nat) -> {
 
   // `gidStatus` returns the current status of a gid.
   //
-  // In general, the typical process to track a transaction after submission to
-  // the aggregator is as follows:
-  //
-  // 1. Query the aggregator for the gid. That will return one of "queued",
-  // "pending" or "unavailable".
-  //   If it is "pending" or "unavailable" then query the ledger in step 2.
-  //   If it is "queued" then repeat step 1. after X milliseconds. This means
-  //   we poll the aggregator and watch the queue distance go down until the
-  //   response is different from "queued".
-  //
-  // 2. Query the ledger for the given `gid`. That will return one of
-  // "successful", "failed" or "awaited". 
-  //   If it is "successful" or "failed" then the transaction has been processed
-  //   and that is the final state.
-  //   If it is "awaited" then repeat step 2. after X milliseconds. This means
-  //   we poll the ledger until the transaction is processed.
-  //
-  // The above merely showcases the happy case. There are a number of edge cases
-  // that account for communication failures between aggregator and ledger on
-  // the IC level, frozen canisters, canister upgrades, etc. The full process
-  // can be seen in the README.
+  // See README.md for the typical process to track a transaction after
+  // submission to the aggregator.
   //  
   // The function will trap if the nats in global id are larger than 64 bits.
   // 
