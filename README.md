@@ -106,7 +106,7 @@ in the face of race conditions and other edge cases such as canister restarts.
 ### Aggregator gid status states
 
 The status of a transaction as per its gid can be queried via the `gidStatus(gid)` query function.
-It returns one of the following states:
+It returns one of the following states or traps:
 
 |State|Description|
 |---|---|
@@ -117,45 +117,72 @@ It returns one of the following states:
 |`unknown`|The gid was issued by a different aggregator (incl. this aggregator before the last restart). Hence the aggregator does not know.|
 |trap|The gid is not valid, i.e. can not have been issued by any aggregator|
 
+#### Edge cases
+
+*Note*: The protocol is designed such that the aggregator can go through any of the following edge cases:
+|Case|Description|
+|---|---|
+|being uninstalled and installed again|This refers to `uninstall_code` plus `install_code`. The canister will not process outstanding responses, wipe its state, start fresh from an empty canister just like if first installed.|
+|being reinstalled| This refers to `install_code mode=reinstall`. The canister will wait for outstanding responses, then wipe its start, start fresh from an empty canister just like if first installed.|
+|being upgraded| This refers to `install_code mode=upgrade`. Persisting the state of the aggregator is not implemented. We make sure that the upgrade sequence wipes the state and starts fresh by declaring no stable variables. So any upgrade behaves like a reinstall.|
+|being stopped and then started again|This will persist the state.|
+|being frozen and then unfrozen again|This will persist the state.|
+
+In the diagrams below the first three cases are labeled as "restart".
+
+The last two cases, if they last longer, will be recognized by the ledger as a timeout.
+The ledger will then request the aggregator to do a "soft restart"
+which means that the aggregator will voluntarily drop its state and start fresh.
+It eventually has the same effect as a code reinstall but there is a transition phase.
+In the diagrams below the start of a soft restart is labeled as "soft restart" and the completion of a soft restart is labeled as "restart".
+
+Question: Is reinstall not immediate? Is there a phase in which the canister is effectively stopped but can still be queried?
+
+Question: Are upgrades not immediate? Is there a phase in which the canister is effectively stopped but can still be queried?
+If yes then then we might be able to return dropped by the aggregator before the ledger knows about it.
+
+#### Soft restart
+
+On a technical level, this means that the aggregator shuts down its current so-called "stream id" and obtains a new "stream id" from the ledger.
+This happens when ledger request the aggregator to do that after a keep-alive timeout.
+
+#### Transition diagram
 ```mermaid
 flowchart TD
+Q -->|restart| U
 Q[queued : n] -->|"new n <= old n"| Q
-Q --> P[pending]
-P --> U
-P --> L[processed]
-P --> Q
-L --> U[unknown]
-D --> U
-Q --> D[dropped] 
+Q -->|sent in<br>batch| P[pending]
+P -->|uninstall +<br>install| U
+P -->|batch<br>delivery<br>succeeded| L[processed]
+P -->|batch<br>delivery<br>failed| Q
+P -->|soft restart| D
+L -->|restart| U[unknown]
+D -->|restart| U
+Q -->|soft restart| D[dropped] 
 ``` 
 
-The state transitions from `queued` to `pending` when the transaction is placed in a batch.
+|Transition|Description|
+|---|---|
+|`queued` -> `pending`|The transaction is placed in a batch.|
+|`pending` -> `queued`|The aggregator receives a response telling it that the batch containing the transaction could no be delivered.|
+|`pending` -> `processed`|The aggregator receives a response telling it that the batch has been processed by the ledger.|
+|`queued` -> `unknown`|The aggregator wipes its state (restart).|
+|`processed` -> `unknown`|The aggregator wipes its state (restart).|
+|`dropped` -> `unknown`|The aggregator wipes its state (restart).|
+|`queued` -> `dropped`|The ledger requests a restart and the soft restart begins.|
+|`pending` -> `unknown`|The aggregator is uninstalled and installed again. Since this forcibly discards outstanding responses we do not transition through the `processed` state.|
+|`pending` -> `dropped`|The ledger requests a restart and the soft restart begins. The information given to the aggregator in the request will resolve all pending to transaction states to either processed or dropped.|
 
-The state transitions from `pending` to `queued` when the aggregator receives a response telling it that the batch containing the transaction could no be delivered.
-
-The state transitions from `pending` back to `processed` when the aggregator receives a response telling it that the batch has been processed by the ledger.
-
-The state transitions from `queued` to `dropped` when the aggregator wants to reset the communication with the ledger. 
-On a technical level, this means that the aggregator shuts down its current so-called "stream id" and needs to receive a new "stream id" from the ledger.
-For example, this happens when the aggregator goes into stopping mode before an upgrade.
-The ledger can also ask the aggregator to use a new stream id.
-
-TODO: Can the state transition from `pending` directly to `dropped`? If the ledger ask the aggregator to use a new stream id and biggy-backs information about last processed position onto it.
-
-The state transitions from `processed` to `unknown` when the aggregator restarts and wipes its state (e.g. upgrades).
-
-*Note*: The protocol is designed such that the aggregator does not have to persist states across upgrades.
-
-The state transitions from `dropped` to `unknown` when re-start communication after a communication reset.
-
-The state transitions from `pending` directly to `unknown` only in exceptional cases.
-For example, it can happen if the aggregator canister is deleted without first stopping it and is then re-installed.
-This can cause outstanding call contexts to get dropped which in turn can transition a state from `pending` to `unknown`.
+Note: The state "dropped" is not strictly needed for the functionality of frontends. The aggregator could return "unknown" instead and the frontends would continue working correctly.
+Or the frontend could not implement any special handling of the "dropped" state and treat it the same as the "unknown" state.
+But if used then the state "dropped" allows the frontend to enhance user experience in the case of a soft restart. 
+The definite transaction state will be shown quicker to the user.
+Without it there could be a 2-minute delay.
 
 ### Leder gid status states
 
 The status of a transaction as per its gid can be queried via the `gidStatus(gid)` query function.
-It returns one of the following states:
+It returns one of the following states or traps:
 
 |State|Description|
 |---|---|
@@ -164,7 +191,20 @@ It returns one of the following states:
 |`dropped`|The transaction has not been processed and cannot be processed anymore.|
 |trap|The gid can not have been issued by any aggregator.|
 
-For valid gids the transition diagram is:
+#### Correspondence to aggregator states
+
+If the aggregator returns `processed` or `dropped` then it has exactly the same meaning as if the ledger returned it.
+The two canisters may just become aware of the states at different points in time.
+That's why we have used the same name for the state even though they are returned by functions in different canisters. 
+
+However, `awaited` and `pending` are not the same.
+The ledger returns `awaited` for transactions that are `queued` at the aggregator
+and which, in case of restarts, may never transition to `pending`.
+Moreover, the ledger returns `awaited` even for gids that have not yet been issued by the aggregator (but might be issued in the future).
+
+Conversely, the aggregator might return `pending` for transactions that are already `dropped` at the ledger.
+
+#### Transition diagram
 ```mermaid
 flowchart TD
 W[awaited] --> P[processed]
