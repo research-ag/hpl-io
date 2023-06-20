@@ -2,13 +2,81 @@
 
 ## Account model
 
-### A multi-token ledger
+### Tokens
+
+The ledger manages balances in many different tokens.
+It currently supports only fungible tokens.
+A fungible token is identified by its asset id (type `nat`).
+Token quantities are represented as `nat`s and must fit in 128 bits.
 
 ### Principals and subaccounts
 
-### Virtual accounts
+Accounts are owned by principals. 
+A principal can have an arbitrary number of accounts.
+The accounts of a principal are numbered consecutively `0, 1, 2, ...`.
+Hence, an account reference is a pair `(principal, subid)` where `subid` is a `nat`.
 
-## Use by external users
+Each account has a *unit* which specifies the asset id that it can hold. 
+The unit is permanent, i.e. cannot change.
+
+Accounts have to be explicitly opened by the owner.
+When opening a new account the owner specifies the unit. 
+An owner can have multiple accounts for the same unit.
+
+Transfers from or to accounts fail if the transferred asset id does not match the account unit.
+
+### Virtual accounts (part 1)
+
+Unlike in most other ledgers, it is not possible for one account owner A to deposit
+tokens into any account of another owner B (even if the asset id matches).
+Instead, the B has to first grant access to the sender A. 
+This happens by opening a so-called virtual account.
+Without virtual accounts the only transfers possible would be between accounts of the same owner.
+
+A virtual account V of an owner A specifies:
+* a *backing account* X which is a "physical" account of A
+* an *access principal* B which is any principal
+The only principal that can access V in a transfer, 
+either as sending or receiving account,
+is B.
+Even A cannot access V in a transfer.
+When a transfer is executed then any balance change in V is applied to X.
+
+The access principal if a virtual account is permanent, i.e. cannot be changed.
+
+A virtual account has a unit which is inherited from its backing account.
+The backing account of a virtual account can be changed to a different one of the same unit.
+
+Virtual accounts are referenced by their owner and a virtual account id which is a `nat`.
+The virtual account ids are consecutive numbers `0, 1, 2, ...`.
+Virtual accounts need to be openend explicitly by their owner.
+
+A virtual account can be viewed as a "gated port" to a physical account.
+It has a port id (the virtual account id) and is gated by the access principal.
+
+Transfers created by a principal A can:
+* send from a physical account of A to another physical account of A
+* send from a physical account of A to a virtual account with access principal A
+* send from a virtual account with access principal A to a physical account of A
+* send from a virtual account with access principal A to another virtual account with access principal A
+
+### Virtual accounts (part 2)
+
+Virtual accounts also have balances.
+The balance of a virtual account V is independent of the balance in the backing subaccount X.
+V's balance can be freely set or adjusted up and down by the owner.
+
+When a transfer is executed involving V then the transfer's balance change is applied to V's balance *and* to X's balance.
+If the balance change is negative (i.e. the transfer is outgoing)
+then there must be sufficient balance in V *and* in X or the tranfer will fail.
+
+For incoming transfers V's balance can be used to track the cumulative deposits made by the access principal B.
+
+For outgoing transfers V's balance can be used as an allowance to B because B can withdraw only up V's balance even if X's balance is higher.
+
+Thus virtual accounts as a concept have similarities with allowance and approve-transfer methods. 
+
+## API for external users
 
 The high-performance ledger (hpl) is a set of canisters spread over various subnets.
 We describe here how external users interact with this set of canisters collectively called the "hpl system" or simply the "hpl".
