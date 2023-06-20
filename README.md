@@ -290,50 +290,7 @@ Without it there could be a 2-minute delay.
 
 ### Frontend flow diagram to track transaction status
 
-```mermaid
-flowchart TD
-    L("1.<br>query ledger.txStatus(gid)<br>(initial query)") --> R1{result?}
-    R1 -->|processed| P1[processed<br>with status]
-    R1 -->|awaited :<br>aggregator principal| A("2.<br>query aggregator.txStatus(gid)<br>(polling loop)")
-    R1 -->|dropped| D1[permanently<br>dropped]
-
-    %% Aggregator %%
-    A --> R2{result?}
-    R2 -->|queued : n| A 
-    R2 -->|unknown| L3["5.<br>query ledger.txStatus(gid)<br>(timeout loop, runs <= 2 min.)"]
-    R2 -->|processed| LF("3.<br>query ledger.txStatus(gid)<br>(final query)")
-    R2 -->|pending| L2("4.<br>query ledger.txStatus(gid)<br>(polling loop)")
-    R2 -->|dropped| D4["permanently<br>dropped"]
-
-    %% Ledger final query %%
-    LF --> R3{result?}
-    R3 -->|awaited| impossible
-    R3 -->|dropped| D2[permanently<br>dropped]
-    R3 -->|processed| P5[processed<br>with status]
-
-    %% Ledger polling loop %%
-    L2 --> R4{result?}
-    R4 --> |processed| P3[processed<br>with status]
-    R4 -->|awaited| L2
-    R4 -->|"awaited<br>(after n polls)"| A
-
-    %% Ledger timeout loop %%
-    L3 --> R5{result?}
-    R5 -->|awaited| L3
-    R5 --> |processed| P4[processed<br>with status]
-    R5 -->|dropped| D3["permanently<br>dropped"]
-    
-classDef green fill:#9f6
-classDef orange fill:#f96
-classDef red fill:#f77
-class A,R2,L2,R4,P3,D4 green
-class LF,R3,P2,D2,P5 green
-class L3,R5,D3,P4 red
-```
-
 Notes:
-* The diagram starts at the top with a query to the ledger. This is necessary if we do not know anything about the gid. If we already know the principal of the aggregator from which it was obtained then we can go directly to step 2 where the green path starts.
-* The red path only happens if the aggregator has gone through an upgrade and lost its state.
 * A "dropped" result should be confirmed by a query in update mode or by a certified variable. Only after that is it safe to resubmit the same transaction.
 * If in step 2 the aggregator is unreachable (stopped, frozen, deleted) then we proceed as in step 5. However, if the loop does not terminate within 2 minutes then the aggregator may have come back up with its state intact and resumed operation. Hence we go back to step 2 if that happens. 
 
