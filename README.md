@@ -238,13 +238,13 @@ The further away the slower we need to poll.
 
 ```mermaid
 flowchart TD
-    A("1.<br>query aggregator.txStatus(gid)<br>(polling loop)")
+    A("1.<br>query aggregator.txStatus(gid)<br>(unbounded polling loop)")
 
-    %% Aggregator %%
+    %% Aggregator unbounded loop %%
     A --> R{result?}
     R -->|queued : n<br>pending| A 
-    R -->|processed| PF[processed<br>with status]
-    R -->|dropped| D4["permanently<br>dropped"]
+    R -->|processed| PF[processed<br>with result]
+    R -->|dropped| D["permanently<br>dropped"]
 ```
 #### Protocol 2
 
@@ -253,29 +253,36 @@ With the unknown status it could happen that we missed the dropped or processed 
 It could have transitioned through one of those states within one polling interval.
 So our polling only sees pending and then unknown.
 In this case the client switches to polling the ledger for status.
-The polling loop for the ledger is guaranteed within the timeout configured in the ledger (~2 min.).
+The polling loop for the ledger is guaranteed to terminate in bounded time (which is the timeout configured in the ledger).
 
 Note: We know the loop will terminate because 
 * we know implicitly that the gid was issued by the aggregator 
 * the aggregator gave status unknown before.
-Without that knowledge there is no guarantee when the polling loop at the ledger terminates.
+
+Proof: If the gid was issued by the aggregator then it can reach status unknown only if the aggregator wipes its state.
+If the aggregator wipes its state then it also resets communication with the ledger.
+This guarantees that the ledger is either processing the transaction
+or awaiting it is going to time out,
+in which case it will reach status dropped at the ledger.
+
+The aggregator either closes a stream gracefully or abandons a stream. If it gets abandoned then it gets closed by the ledger after a timeout. If a stream is closed then all outstanding transactions are dropped.
 
 ```mermaid
 flowchart TD
-    A("1.<br>query aggregator.txStatus(gid)<br>(polling loop)")
-
-    %% Aggregator %%
+    %% Aggregator unbounded loop %%
+    A("1.<br>query aggregator.txStatus(gid)<br>(unbounded polling loop)")
     A --> R{result?}
     R -->|queued : n<br>pending| A 
-    R -->|processed| PF[processed<br>with status]
-    R -->|dropped| D4["permanently<br>dropped"]
-    R -->|unknown| L("poll ledger")
+    R -->|processed| PF[processed<br>with result]
+    R -->|dropped| D["permanently<br>dropped"]
+    R -->|unknown| L 
 
-    %% Ledger timeout loop %%
-    L --> R5{result?}
-    R5 -->|awaited| L
-    R5 --> |processed| P4[processed<br>with status]
-    R5 -->|dropped| D3["permanently<br>dropped"]
+    %% Ledger bounded loop %%
+    L("2.<br>ledger.txStatus(gid)<br>(bounded polling loop)")
+    L --> R2{result?}
+    R2 -->|awaited| L
+    R2 --> |processed| PF2[processed<br>with result]
+    R2 -->|dropped| D2["permanently<br>dropped"]
 ```
 
 #### Protocol 3
@@ -289,95 +296,46 @@ This is quicker overall.
 
 However, delivery of a batch could fail and the status at the aggregator can go from pending back to queued.
 Most clients will want to catch that, update it in the user frontend, and go back to polling the aggregator.
-Therefore, it is advisable to time out the polling the ledger 
+Therefore, it is advisable to time out polling the ledger 
 and switch back to polling the aggregator at some point.
 
-#### Protocol 4
-
-We now combine protocol 2 and 3 into one.
-
-#### Flow diagram
-
 ```mermaid
 flowchart TD
-    A("1.<br>query aggregator.txStatus(gid)<br>(polling loop)")
+    %% Aggregator unbounded loop %%
+    A("1.<br>query aggregator.txStatus(gid)<br>(unbounded polling loop)")
+    A --> R{result?}
+    R -->|queued : n| A 
+    R -->|processed| PF[processed<br>with result]
+    R -->|dropped| D["permanently<br>dropped"]
+    R -->|unknown| L 
+    R -->|pending| L2 
 
-    %% Aggregator %%
-    A --> R2{result?}
-    R2 -->|queued : n| A 
-    R2 -->|unknown| L3["4.<br>query ledger.txStatus(gid)<br>(timeout loop, runs <= 2 min.)"]
-    R2 -->|processed| LF("2.<br>query ledger.txStatus(gid)<br>(final query)")
-    R2 -->|pending| L2("3.<br>query ledger.txStatus(gid)<br>(polling loop)")
-    R2 -->|dropped| D4("permanently<br>dropped")
+    %% Ledger bounded loop %%
+    L("2.<br>ledger.txStatus(gid)<br>(bounded polling loop)")
+    L --> R2{result?}
+    R2 -->|awaited| L
+    R2 --> |processed| PF2[processed<br>with result]
+    R2 -->|dropped| D2["permanently<br>dropped"]
 
-    %% Ledger final query %%
-    LF --> R3{result?}
-    R3 -->|awaited| impossible
-    R3 -->|dropped| D2[permanently<br>dropped]
-    R3 -->|processed| P5[processed<br>with status]
-
-    %% Ledger polling loop %%
-    L2 --> R4{result?}
-    R4 --> |processed| P3[processed<br>with status]
-    R4 -->|awaited| L2
-    R4 -->|"awaited<br>(after n polls)"| A
-
-    %% Ledger timeout loop %%
-    L3 --> R5{result?}
-    R5 -->|awaited| L3
-    R5 --> |processed| P4[processed<br>with status]
-    R5 -->|dropped| D3["permanently<br>dropped"]
-    
-classDef green fill:#9f6
-classDef orange fill:#f96
-classDef red fill:#f77
-class A,R2,L2,R4,P3,D4 green
-class LF,R3,P2,D2,P5 green
-class L3,R5,D3,P4 red
+    %% Ledger unbounded loop %%
+    L2("3.<br>ledger.txStatus(gid)<br>(unbounded polling loop)")
+    L2 --> R3{result?}
+    R3 --> |processed| PF3[processed<br>with result]
+    R3 -->|dropped| D3[permanently<br>dropped]
+    R3 -->|awaited| L2
+    R3 -->|"awaited<br>(after n polls)"| A
 ```
 
-Notes:
-* The diagram starts at the top with a query to the ledger. This is necessary if we do not know anything about the gid. If we already know the principal of the aggregator from which it was obtained then we can go directly to step 2 where the green path starts.
-* The red path only happens if the aggregator has gone through an upgrade and lost its state.
-* The protocol is designed such that users can determine with certainty whether they have to resubmit the transaction or not. This is the case even if the aggregator loses its state.
+Note:
+The discussion above assumed that the client knows the aggregator which has generated the gid.
+If we do not know that then we have to start with one initial query to the ledger that will tell us the principal of the aggregator.
 
 ```mermaid
 flowchart TD
-    L("1.<br>query ledger.txStatus(gid)<br>(initial query)") --> R1{result?}
-    R1 -->|processed| P1[processed<br>with status]
-    R1 -->|awaited :<br>aggregator principal| A("2.<br>query aggregator.txStatus(gid)<br>(polling loop)")
+    L("query ledger.txStatus(gid)<br>(initial query)") --> R1{result?}
+    R1 -->|processed| P1[processed<br>with result]
     R1 -->|dropped| D1[permanently<br>dropped]
-
-    %% Aggregator %%
-    A --> R2{result?}
-    R2 -->|queued : n| A 
-    R2 -->|unknown| L3["5.<br>query ledger.txStatus(gid)<br>(timeout loop, runs <= 2 min.)"]
-    R2 -->|processed| LF("3.<br>query ledger.txStatus(gid)<br>(final query)")
-    R2 -->|pending| L2("4.<br>query ledger.txStatus(gid)<br>(polling loop)")
-    R2 -->|dropped| D4["permanently<br>dropped"]
-
-    %% Ledger final query %%
-    LF --> R3{result?}
-    R3 -->|awaited| impossible
-    R3 -->|dropped| D2[permanently<br>dropped]
-    R3 -->|processed| P5[processed<br>with status]
-
-    %% Ledger polling loop %%
-    L2 --> R4{result?}
-    R4 --> |processed| P3[processed<br>with status]
-    R4 -->|awaited| L2
-    R4 -->|"awaited<br>(after n polls)"| A
-
-    %% Ledger timeout loop %%
-    L3 --> R5{result?}
-    R5 -->|awaited| L3
-    R5 --> |processed| P4[processed<br>with status]
-    R5 -->|dropped| D3["permanently<br>dropped"]
-    
-classDef green fill:#9f6
-classDef orange fill:#f96
-classDef red fill:#f77
-class A,R2,L2,R4,P3,D4 green
-class LF,R3,P2,D2,P5 green
-class L3,R5,D3,P4 red
+    R1 -->|awaited :<br>aggregator principal| A("1.<br>query aggregator.txStatus(gid)<br>(unbounded polling loop)")
 ```
+
+The box at the bottom right is the starting point of the protocol above.
