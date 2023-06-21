@@ -1,4 +1,14 @@
 ## Detailed discussion of edge cases (WIP, do not read)
+
+Transactions are sent to the ledger as a stream and gids are bound to a specific stream.
+The stream order is the same as the queue order and also the same as the execution order.
+Sometimes the stream is closed, either by the ledger or by the aggregator, and a new one is openend.
+At any point in time there is at most one stream open between an aggregator and the ledger.
+
+For example, if the aggregator wipes its state then a new stream needs to be opened.
+On the other hand, if there is a delay in the communication between the two canisters then, after a timeout, the ledger closes the stream and opens a new one.
+Whenever a stream is closed then non-processed transactions in that stream are dropped.
+
 #### Edge cases
 
 *Note*: The protocol is designed such that the aggregator can go through any of the following edge cases:

@@ -4,10 +4,10 @@
 
 ### Tokens
 
-The ledger is a multi-token ledger, i.e. "host" multiple different tokens.
+The ledger is a multi-token ledger.
 It currently supports only fungible tokens.
 A fungible token is identified by its asset id (type `nat`).
-Token quantities are represented as `nat`s and must fit in 128 bits.
+Token quantities are represented as `nat`s that must fit in 128 bits.
 
 ### Principals and subaccounts
 
@@ -77,6 +77,23 @@ For outgoing transfers V's balance can be used as an allowance to B because B ca
 
 Thus virtual accounts as a concept have similarities with allowance and approve-transfer methods. 
 
+### Transfers
+
+A transfer is described by the following data:
+
+|Field|Description|
+|---|---|
+|caller|The principal who submits the transfer.|
+|from|The account reference of the sending account. A physical account of caller of a virtual account with access principal A.|
+|to|The account reference of the receiving account. A physical account of caller of a virtual account with access principal A.|
+|asset id|The unit to transfer.|
+|amount|The quantity to transfer or the directive "max".|
+|memo|An array of blobs.|
+
+The amount directive "max" transfers the entire balance of the sending account at the time of execution of the transfer.
+
+The memo can hold arbitrary meta data and is irrelevant for the execution of the transfer. 
+
 ## API for external users
 
 The high-performance ledger (hpl) is a set of canisters spread over various subnets.
@@ -115,29 +132,52 @@ It returns one of the following states or traps:
 |`pending`|The transaction has been forwarded to the ledger but the aggregator does not know if the batch has been delivered. If the batch cannot be delivered then it will be retried.|
 |`processed`|The transaction has been processed at the ledger.|
 |`dropped`|The transaction has not been processed at the ledger, is not in flight to the ledger and will not be retried.|
-|`unknown`|The gid was issued by a different aggregator or by this aggregator before an upgrade.|
-|trap|The gid is not valid, i.e. can not have been issued by any aggregator|
+|`unknown`|The gid was issued by a different aggregator or this aggregator has wiped its state.|
+|trap|The gid is not valid, i.e. can not have been issued by any aggregator.|
+
+In normal, idealized operation only the states `queued, pending, processed` are used.
+
+The state `unknown` is introduced to allow more flexibility in the aggregator implementation
+and to make the protocol overall more robust.
+The protocol is designed such that the aggregator is allowed to wipe all or part of its state at any point in time, for example in an upgrade.
+If this happens then the aggregator may forget the state of existing gids and thus state may transition to `unknown`.
+Whether the aggregator ever wipes any parts of its state is left to the implementation. 
+
+Clients are expected to handle the `unknown` response correctly by understanding that it can mean processed or dropped.
+
+Transactions may get dropped for two different reasons:
+1. If the aggregator wipes its state then queued transactions will get dropped because they cannot be retried.
+
+2. If there is a delay in the communication between aggregator and ledger then, after a timeout,
+the ledger will intentionally drop all outstanding transactions from that aggregator.
+The reason to do so is to enhance the user experience.
+For, if a transaction is known to be dropped, then the user can savely resubmit it to the same aggregator or to a different aggregator.
+Without this mechanism the user would never be able to safely resubmit and would have to wait indefinitely, not knowing when the communication between the two canisters resumes.
+In practice, the ledger drops transactions that it has not yet seen by resetting the communication protocol between aggeregator and ledger, 
 
 #### Simple transition diagram
 ```mermaid
 flowchart TD
 Q[queued : n] -->|"new n <= old n"| Q
 Q --> P[pending]
+P --> D[dropped]
 P --> L[processed]
 P --> Q
-P --> D[dropped]
 L --> U[unknown]
 D --> U
+Q --> D
 ``` 
 
 |Transition|Description|
 |---|---|
+|`queued:n` -> `queued:n'`|A prior batch is sent and the transaction moves closer to the head of the queue.|
 |`queued` -> `pending`|The transaction is placed in a batch.|
 |`pending` -> `queued`|The aggregator receives a response telling it that the batch containing the transaction could no be delivered. It is queued again and will be retried.|
 |`pending` -> `processed`|The aggregator receives a response telling it that the batch has been processed by the ledger.|
-|`processed` -> `unknown`|The aggregator wipes its state (upgrade).|
-|`dropped` -> `unknown`|The aggregator wipes its state (upgrade).|
-|`pending` -> `dropped`|The ledger requests a communication reset (timeout).|
+|`processed` -> `unknown`|The aggregator wipes state (upgrade).|
+|`dropped` -> `unknown`|The aggregator wipes state (upgrade).|
+|`queued` -> `dropped`|The aggregator wipes state (upgrade).|
+|`pending` -> `dropped`|The ledger resets communication (timeout).|
 
 ### Leder gid status states
 
@@ -156,13 +196,14 @@ The result is a different data point. It can be `success` or `failure`.
 
 #### Correspondence to aggregator states
 
-If the aggregator returns `processed` or `dropped` then it has exactly the same meaning as if the ledger returned it.
+If the aggregator returns `processed` or `dropped` then this has exactly the same meaning as if the ledger returned it.
 The two canisters may just become aware of the states at different points in time.
 That is why we use the same name for states even though they come from different canisters.
 
 However, `awaited` and `pending` are not the same.
-First, the ledger returns `awaited` for gids that are `queued` at the aggregator.
-Second, the ledger returns `awaited` for gids that have not yet been issued by the aggregator and that may or may not be issued in the future.
+In a sense `awaited` is a wider class than `pending`.
+The ledger returns `awaited` not only for gids that are `queued` at the aggregator.
+It returns `awaited` also for gids that have not yet been issued by the aggregator and that may or may not be issued in the future.
 That is why we do not use the name "pending" for a state at the ledger.
 
 #### Transition diagram
@@ -177,8 +218,128 @@ W --> D[dropped]
 |`awaited` -> `processed`|The transaction is received in a batch and processed.|
  `awaited` -> `dropped`|The ledger is notified about the fact that the aggregator has upgraded. Or the ledger has experienced an timeout and will the aggregator to reset the communication stream.|
 
+### Client flow to track transaction status
 
-### Frontend flow diagram to track transaction status
+Suppose the client (frontend) has submitted a transaction to an aggregator and received a gid.
+Now it wants to track the transaction status and report progress to the user.
+This happens in two steps.
+The first step is to track progress until the status is processed or dropped.
+If the status is processed then the second step is to query the ledger for the transaction result 
+(success or failure).
+The second step is a single query which does not require further discussion.
+
+#### Protocol 1
+
+To discuss the first step assume first an idealized world without the `unknown` status.
+The client can poll the aggregator until the status is no longer queued or pending.
+When the polling stops the status is either dropped or processed and the first step is completed.
+While the status is queued the polling interval can be adjusted based on the distance n from the head of the queue.
+The further away the slower we need to poll.
+
+```mermaid
+flowchart TD
+    A("1.<br>query aggregator.txStatus(gid)<br>(polling loop)")
+
+    %% Aggregator %%
+    A --> R{result?}
+    R -->|queued : n<br>pending| A 
+    R -->|processed| PF[processed<br>with status]
+    R -->|dropped| D4["permanently<br>dropped"]
+```
+#### Protocol 2
+
+We now take into account the unknown status.
+With the unknown status it could happen that we missed the dropped or processed status.
+It could have transitioned through one of those states within one polling interval.
+So our polling only sees pending and then unknown.
+In this case the client switches to polling the ledger for status.
+The polling loop for the ledger is guaranteed within the timeout configured in the ledger (~2 min.).
+
+Note: We know the loop will terminate because 
+* we know implicitly that the gid was issued by the aggregator 
+* the aggregator gave status unknown before.
+Without that knowledge there is no guarantee when the polling loop at the ledger terminates.
+
+```mermaid
+flowchart TD
+    A("1.<br>query aggregator.txStatus(gid)<br>(polling loop)")
+
+    %% Aggregator %%
+    A --> R{result?}
+    R -->|queued : n<br>pending| A 
+    R -->|processed| PF[processed<br>with status]
+    R -->|dropped| D4["permanently<br>dropped"]
+    R -->|unknown| L("poll ledger")
+
+    %% Ledger timeout loop %%
+    L --> R5{result?}
+    R5 -->|awaited| L
+    R5 --> |processed| P4[processed<br>with status]
+    R5 -->|dropped| D3["permanently<br>dropped"]
+```
+
+#### Protocol 3
+
+The latency in protocol 1 can be improved.
+When a transaction is processed at the ledger then at first it remains pending at the aggregator.
+It takes some time before the aggregator receives the response and the status transitions to processed there as well.
+Therefore, the client can poll the aggregator until the status is pending and then start polling the ledger for status.
+Polling stops when the status at the ledger is no longer awaited.
+This is quicker overall.
+
+However, delivery of a batch could fail and the status at the aggregator can go from pending back to queued.
+Most clients will want to catch that, update it in the user frontend, and go back to polling the aggregator.
+Therefore, it is advisable to time out the polling the ledger 
+and switch back to polling the aggregator at some point.
+
+#### Protocol 4
+
+We now combine protocol 2 and 3 into one.
+
+#### Flow diagram
+
+```mermaid
+flowchart TD
+    A("1.<br>query aggregator.txStatus(gid)<br>(polling loop)")
+
+    %% Aggregator %%
+    A --> R2{result?}
+    R2 -->|queued : n| A 
+    R2 -->|unknown| L3["4.<br>query ledger.txStatus(gid)<br>(timeout loop, runs <= 2 min.)"]
+    R2 -->|processed| LF("2.<br>query ledger.txStatus(gid)<br>(final query)")
+    R2 -->|pending| L2("3.<br>query ledger.txStatus(gid)<br>(polling loop)")
+    R2 -->|dropped| D4("permanently<br>dropped")
+
+    %% Ledger final query %%
+    LF --> R3{result?}
+    R3 -->|awaited| impossible
+    R3 -->|dropped| D2[permanently<br>dropped]
+    R3 -->|processed| P5[processed<br>with status]
+
+    %% Ledger polling loop %%
+    L2 --> R4{result?}
+    R4 --> |processed| P3[processed<br>with status]
+    R4 -->|awaited| L2
+    R4 -->|"awaited<br>(after n polls)"| A
+
+    %% Ledger timeout loop %%
+    L3 --> R5{result?}
+    R5 -->|awaited| L3
+    R5 --> |processed| P4[processed<br>with status]
+    R5 -->|dropped| D3["permanently<br>dropped"]
+    
+classDef green fill:#9f6
+classDef orange fill:#f96
+classDef red fill:#f77
+class A,R2,L2,R4,P3,D4 green
+class LF,R3,P2,D2,P5 green
+class L3,R5,D3,P4 red
+```
+
+Notes:
+* The diagram starts at the top with a query to the ledger. This is necessary if we do not know anything about the gid. If we already know the principal of the aggregator from which it was obtained then we can go directly to step 2 where the green path starts.
+* The red path only happens if the aggregator has gone through an upgrade and lost its state.
+* The protocol is designed such that users can determine with certainty whether they have to resubmit the transaction or not. This is the case even if the aggregator loses its state.
 
 ```mermaid
 flowchart TD
@@ -220,8 +381,3 @@ class A,R2,L2,R4,P3,D4 green
 class LF,R3,P2,D2,P5 green
 class L3,R5,D3,P4 red
 ```
-
-Notes:
-* The diagram starts at the top with a query to the ledger. This is necessary if we do not know anything about the gid. If we already know the principal of the aggregator from which it was obtained then we can go directly to step 2 where the green path starts.
-* The red path only happens if the aggregator has gone through an upgrade and lost its state.
-* The protocol is designed such that users can determine with certainty whether they have to resubmit the transaction or not. This is the case even if the aggregator loses its state.
