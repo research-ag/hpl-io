@@ -92,12 +92,22 @@ type GlobalId = record { nat; nat };
 // the actual TxInput, not only the gid. When we query the aggregator for
 // GidStatus we learn about the progress of communication between aggregator and
 // ledger which is only a function of gid, not the TxInput.
-type GidStatus = variant { 
+type GidStatusAtAggregator = variant { 
   queued : nat; 
   pending; 
   processed;
   dropped;
   unknown;
+};
+
+// The type is designed such that the records obtained from the aggregator
+// and from the ledger can be combined into one.
+// The TxStatus types declared in both .did files are compatible but have
+// the unused fields commented out. 
+type TxStatus = record {
+  0 : opt GidStatusAtAggregator;
+  // 1 : opt GidStatusAtLedger; 
+  // 2 : opt TxResult;
 };
 
 // API
@@ -110,11 +120,11 @@ service : (principal, nat) -> {
   // the transaction. The purpose of returning GidStatus is so that the caller
   // knows the queue position without having to make another call.
   // 
-  // The returned GidStatus is always `queued` (never any of the other cases),
-  // i.e. returning a GidStatus variant instead of only the queue position has
-  // some redundancy. The reason to do so is to simplify the calling code
-  // through unification. The assumption is that the calling code will poll the
-  // `gidStatus` query function after submission. Hence the first `GidStatus`
+  // Returning TxStatus instead of only the queue position (Nat) has some
+  // redundancy, in particular because other variant cases than `queued` cannot
+  // occur. The reason to do so is to simplify the calling code through
+  // unification. The assumption is that the calling code will poll the
+  // `txStatus` query function after submission. Hence the first `TxStatus`
   // returned by `submitAndExecute` can be fed into the same processing logic as
   // the return values obtained in the subsequent polling.
   // 
@@ -141,14 +151,14 @@ service : (principal, nat) -> {
   // introduced as new variant cases in the `TxInput` argument.  New fields can
   // be added to the returned record. Old client code will not see those fields.
   // If the structure of GlobalId changes then it is advisable to introduce a
-  // new function replacing this `submitAndExecute`.  New cases can be added to
-  // the GidStatus variant because it is wrapped in an `opt` (see also the
-  // `gidStatus` query below).
-  submitAndExecute : (TxInput) -> (record { GlobalId; opt GidStatus });
+  // new function replacing this `submitAndExecute`. New cases can be added to
+  // the GidStatusAtAggregator variant because it is wrapped in an `opt` (see
+  // also the `txStatus` query below).
+  submitAndExecute : (TxInput) -> (record { GlobalId; TxStatus });
   
   // QUERIES
 
-  // `gidStatus` returns the current status of a gid.
+  // `txStatus` returns the current status of a gid.
   //
   // See README.md for the typical process to track a transaction after
   // submission to the aggregator.
@@ -161,19 +171,20 @@ service : (principal, nat) -> {
   // those fields. 
   // 
   // If the internal structure of GlobalId changes then it is advisable to
-  // introduce a new function replacing this `gidStatus`.
+  // introduce a new function replacing this `txStatus`.
   // 
-  // New cases can be added to the GidStatus variant because it is wrapped in an
-  // `opt`. Old code that does not know the new case will see the whole status
-  // as `null`.  
+  // New cases can be added to the GidStatusAtAggregator variant because it is
+  // wrapped in an `opt`. Old code that does not know the new case will see the
+  // whole status as `null`.  
   // 
   // For example, if we want to add the ability to cancel transactions that are
-  // already in the queue then we can add a case `canceled` to the GidStatus
-  // variant. An old frontend that is not aware of the case `canceled` would see
-  // `null` as the status if it queries a transaction that is in that state.
-  // However, this is not a problem because a frontend queries only its own
-  // transactions. And if the frontend does not know about the cancelation
-  // feature then none of its transactions will be in that state.
-  gidStatus : (GlobalId) -> (record { opt GidStatus }) query; 
+  // already in the queue then we can add a case `canceled` to the
+  // GidStatusAtAggregator variant. An old frontend that is not aware of the
+  // case `canceled` would see `null` as the status if it queries a transaction
+  // that is in that state.  However, this is not a problem because a frontend
+  // queries only its own transactions. And if the frontend does not know about
+  // the cancelation feature then none of its transactions will be in that
+  // state.
+  txStatus : (GlobalId) -> (TxStatus) query; 
 };
   

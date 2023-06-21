@@ -94,20 +94,15 @@ type Update_Result = variant {
   };
 };
 
-type TxStatus = record {
-  // 0 : GidStatus at aggregator
-  // 1 : GidStatus at ledger
-  // 2 : Tx result
-  1 : opt variant {
-    awaited : Principal; // not yet received, return aggregator principal
+type GidStatusAtLedger = variant {
+    awaited : principal; // not yet received, return aggregator principal
     processed; // received and processed
     dropped; // will not be accepted anymore
   };
-  2 : opt variant {
+type TxResult = variant {
     failed : opt ProcessingError; // failed
     succeeded : TxOutput; // suceeded
   };
-};
 type TxOutput = variant {
   ftTransfer : record {
     amount : nat;
@@ -128,6 +123,16 @@ type ProcessingError = variant {
       // "UnknownSubaccount"
       // "UnknownVirtualAccount"
   };
+};
+
+// The type is designed such that the records obtained from the aggregator
+// and from the ledger can be combined into one.
+// The TxStatus types declared in both .did files are compatible but have
+// the unused fields commented out. 
+type TxStatus = record {
+  // 0 : opt GidStatusAtAggregator;
+  1 : opt GidStatusAtLedger; 
+  2 : opt TxResult;
 };
 
 type GlobalId = record { nat; nat };
@@ -159,7 +164,7 @@ service : () -> {
     // null if a new account state variant other than ft is returned (upgrade)
 
   // account management updates
-  openAccounts : (record { n : nat; type : AccountType }) -> (OpenAccounts_Result); 
+  openAccounts : (record { nat; AccountType }) -> (OpenAccounts_Result); 
     // caller unknown is not possible because the caller gets auto-registered
   openVirtualAccount : (VirtualAccountState) -> (Open_Result); 
     // trap if caller unknown
@@ -178,7 +183,7 @@ service : () -> {
 
   // If the stream id in GlobalId is not known, i.e. has not yet been issued, 
   // then there must be an error on the side of the caller. In this case,
-  // txStatus returns `record { }` which means the options in the record are
+  // status returns `record { }` which means the options in the record are
   // both null.
-  txStatus : (GlobalId) -> (TxStatus) query;
+  txStatus : (GlobalId) -> (TxStatus) query; 
 };
