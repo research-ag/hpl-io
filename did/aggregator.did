@@ -93,17 +93,21 @@ type GlobalId = record { nat; nat };
 // GidStatus we learn about the progress of communication between aggregator and
 // ledger which is only a function of gid, not the TxInput.
 type GidStatusAtAggregator = variant { 
-  queued : nat; 
-  pending; 
+  queued : record { nat }; 
+  pending : record {}; 
   processed;
   dropped;
   unknown;
 };
 
-// The type is designed such that the records obtained from the aggregator
+// The type TxStatus is a common definiton with ledger.
+// It designed such that the records obtained from the aggregator
 // and from the ledger can be combined into one.
-// The TxStatus types declared in both .did files are compatible but have
+// The declarations in both .did files are compatible but have
 // the unused fields commented out. 
+//
+// Note: In Motoko a value of this type is created as
+//  { _0_ = ?...; }
 type TxStatus = record {
   0 : opt GidStatusAtAggregator;
   // 1 : opt GidStatusAtLedger; 

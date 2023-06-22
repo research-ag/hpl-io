@@ -94,11 +94,11 @@ The amount directive "max" transfers the entire balance of the sending account a
 
 The memo can hold arbitrary meta data and is irrelevant for the execution of the transfer. 
 
-## API for external users
+## Transaction API for external users
 
 The high-performance ledger (hpl) is a set of canisters spread over various subnets.
 We describe here how external users interact with this set of canisters collectively called the "hpl system" or simply the "hpl".
-By external users we mean all those who communicate with the IC via ingress messages such as wallet frontends, dfx, etc.
+By external users we mean all clients who communicate with the IC via ingress messages such as wallet frontends, dfx, etc.
 This is not how other canisters interact with the hpl. 
 
 The hpl consists of the ledger canister ("ledger") and multiple aggregator canisters ("aggregators") 
@@ -123,7 +123,7 @@ in the face of race conditions and other edge cases such as canister restarts.
 
 ### Aggregator gid status states
 
-The status of a transaction as per its gid can be queried via the `gidStatus(gid)` query function.
+The status of a transaction as per its gid can be queried via the `txStatus(gid)` query function.
 It returns one of the following states or traps:
 
 |State|Description|
@@ -181,7 +181,7 @@ Q --> D
 
 ### Leder gid status states
 
-The status of a transaction as per its gid can be queried via the `gidStatus(gid)` query function.
+The status of a transaction as per its gid can be queried via the `txStatus(gid)` query function.
 It returns one of the following states or traps:
 
 |State|Description|
