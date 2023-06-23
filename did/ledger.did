@@ -1,0 +1,203 @@
+// common definitions with aggregator
+type AssetId = nat;
+type SubId = nat;
+type VirId = nat;
+
+// Backward compatibility:
+//
+// TODO: Can additional variant cases be added?
+// Are the variants wrapped in opts?
+type AccountType = variant { ft : AssetId; };
+type AccountState = variant { ft : FtState };
+type FtState = record { AssetId; nat }; // pair (asset id, quantity)
+
+//
+type Expiration = variant {
+  None;
+  Timestamp : nat64;
+};
+
+// state of a virtual account from the perspective of the owner
+type VirtualAccountState = record {
+  state : AccountState;
+  backingAccount : SubId;
+  accessPrincipal : principal;
+  expiration : Expiration;
+};
+
+// state of a virtual account from the perspective of the remote principal
+type RemoteState = record {
+  state : AccountState;
+  accessPrincipal : principal; // TBD: could remove this
+  expiration : Expiration;
+};
+
+//
+type OpenAccounts_Result = variant {
+  ok : record { first : SubId };
+  err : opt variant {
+    NoSpaceForPrincipal;
+    NoSpaceForSubaccount;
+    InvalidArguments : text;
+      // "UnknownFtAsset"
+  };
+};
+
+type Open_Result = variant {
+  ok : record { id : VirId };
+  err : opt variant {
+    NoSpaceForAccount;
+    InvalidArguments : text;
+      // "MismatchInAsset"
+      // "UnknownSubaccount" means unknown backing subaccount
+      // "InvalidExpirationTime"
+  };
+};
+
+type Delete_Result = variant {
+  ok;
+  err : opt variant {
+    DeletedVirtualAccount; // means had already been deleted before
+    InvalidArguments : text;
+      // "UnknownVirtualAccount" 
+  };
+};
+
+type VirtualAccountUpdate = record {
+  state : opt StateUpdate;
+  backingAccount : opt SubId;
+  expiration : opt Expiration;
+};
+type StateUpdate = variant { 
+  ft : variant {
+    set : nat;
+    increment : nat;
+    decrement : nat;
+  };
+};
+
+type Update_Result = variant {
+  ok : variant {
+    ft : record {
+      balance : nat;
+      delta : int;
+    };
+  };
+  err : opt variant {
+    DeletedVirtualAccount;
+    InsufficientFunds;
+    InvalidArguments : text;
+      // "InvalidExpirationTime"
+      // "MismatchInAsset"
+      // "UnknownSubaccount"
+      // "UnknownVirtualAccount"
+  };
+};
+
+// See README.md for an explanation of the status states.
+//
+// The `GidStatus` contains the information that is independent on the
+// `TxInput`. 
+// The information that depends on `TxInput` such as success or failure
+// is returned in the other field inside `TxStatus` called `TxResult`.
+//
+// Backwards compatibility:
+// In the future, additional data can be returned in each of the variant cases
+// by adding fields to the records.
+type GidStatusAtLedger = variant {
+    awaited : record { principal }; // principal = aggregator for gid's stream
+    processed : record {}; 
+    dropped : record {};
+  };
+type TxResult = variant {
+    failure : opt ProcessingError;
+    success : opt TxOutput;
+  };
+type TxOutput = variant {
+  ftTransfer : record {
+    // amount + fee was deducted at sender, amount was credited at receiver
+    amount : nat;
+    fee : nat;
+  };
+};
+type ProcessingError = variant {
+  ftTransfer : variant {
+    DeletedVirtualAccount;
+    InsufficientFunds;
+    InvalidArguments : text;
+      // "MismatchInAsset"
+      // "MismatchInRemotePrincipal", means no access
+      // "NotAController"
+      // "UnknownFtAsset"
+      // "UnknownPrincipal"
+      // "UnknownSubaccount"
+      // "UnknownVirtualAccount"
+  };
+};
+
+// The type TxStatus is a common definiton with aggregator.
+// It designed such that the records obtained from the aggregator
+// and from the ledger can be combined into one.
+// The declarations in both .did files are compatible but have
+// the unused fields commented out. 
+//
+// Note: In Motoko a value of this type is created as
+//  { _1_ = ?...; _2_ = ?...; }
+type TxStatus = record {
+  // 0 : opt GidStatusAtAggregator;
+  1 : opt GidStatusAtLedger; 
+  2 : opt TxResult;
+};
+
+type GlobalId = record { nat; nat };
+
+service : () -> {
+  // UPDATES
+
+  // non-public account management queries 
+  accountState : (SubId) -> (opt AccountState) query; 
+    // access by owner
+    // trap if caller unknown
+    // null if subId unknown
+    // null if a new account state variant other than ft is returned (upgrade)
+  virtualAccountState : (VirId) -> (opt VirtualAccountState) query; 
+    // access by owner (not by access principal)
+    // trap if caller unknown
+    // null if virId unknown or deleted 
+    // null if a new account state variant other than ft is returned (upgrade)
+  nAccounts : () -> (nat) query; 
+    // trap if caller unknown
+  nVirtualAccounts : () -> (nat) query; 
+    // trap if caller unknown
+
+  remoteState : (principal, VirId) -> (opt RemoteState) query; 
+    // access by access principal (not by owner)
+    // trap if principal does not exist
+    // trap if virid unknown or deleted
+    // trap if caller != accessPrincipal
+    // null if a new account state variant other than ft is returned (upgrade)
+
+  // account management updates
+  openAccounts : (record { nat; AccountType }) -> (OpenAccounts_Result); 
+    // caller unknown is not possible because the caller gets auto-registered
+  openVirtualAccount : (VirtualAccountState) -> (Open_Result); 
+    // trap if caller unknown
+  deleteVirtualAccount : (VirId) -> (Delete_Result); 
+    // trap if caller unknown
+  updateVirtualAccount : (VirId, VirtualAccountUpdate) -> (Update_Result); 
+    // trap if caller unknown
+
+  // QUERIES
+
+  ftSupply : (AssetId) -> (opt nat) query;
+    // null if assetid unknown
+  ftController : (AssetId) -> (opt principal) query;
+    // null if assetid unknown
+  aggregators : () -> (vec principal) query; // list all aggregators
+
+  // If the stream id in GlobalId is not known, i.e. has not yet been issued, 
+  // then there must be an error on the side of the caller. In this case,
+  // status returns `record { }` which means the options in the record are
+  // both null.
+  txStatus : (GlobalId) -> (TxStatus) query; 
+};
