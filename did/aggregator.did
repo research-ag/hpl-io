@@ -123,6 +123,9 @@ type TxStatus = record {
 // API
 
 service : (principal, nat) -> {
+  // For reasons of DoS protection, any function may trap if any nat argument
+  // values is "too large".
+
   // UPDATES
 
   // `submitAndExecute` submits a transaction to the aggregator. The aggregator
@@ -140,7 +143,7 @@ service : (principal, nat) -> {
   // 
   // `submitAndExecute` will trap in the following cases: 
   // * A `SubId`, `VirId` or `assetId` is larger than 64 bits 
-  // * `amount` is larger than 128 bits 
+  // * `amount` is larger than 64 bits 
   // * The principal in `vir` is longer than 29 bytes or otherwise invalid 
   // * The memo vector is too long (too many entries) 
   // * An individual memo entry is too long (too many bytes) 

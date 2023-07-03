@@ -7,7 +7,8 @@
 The ledger is a multi-token ledger.
 It currently supports only fungible tokens.
 A fungible token is identified by its asset id (type `nat`).
-Token quantities are represented as `nat`s that must fit in 128 bits.
+Token quantities are represented as `nat`s that must fit in 64 bits.
+Consequently, the total supply of any tokens is limited to 2^64 - 1. 
 
 ### Principals and subaccounts
 

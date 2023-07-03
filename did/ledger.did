@@ -152,6 +152,9 @@ type TxStatus = record {
 type GlobalId = record { nat; nat };
 
 service : () -> {
+  // For reasons of DoS protection, any function may trap if any nat argument
+  // values is "too large".
+
   // UPDATES
 
   // non-public account management queries 
