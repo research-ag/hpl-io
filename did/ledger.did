@@ -194,8 +194,13 @@ service : () -> {
 
   ftSupply : (AssetId) -> (opt nat) query;
     // null if assetid unknown
-  ftController : (AssetId) -> (opt principal) query;
+  ftInfo: (AssetId) -> (opt record {
+    controller: principal;
+    decimals: nat8;
+    description: text;
+  }) query;
     // null if assetid unknown
+
   aggregators : () -> (vec principal) query; // list all aggregators
 
   // If the stream id in GlobalId is not known, i.e. has not yet been issued, 
