@@ -198,8 +198,17 @@ It returns one of the following states or traps:
 |`queued:n`|The gid is in the queue and the distance to the queue head is `n`.|
 |`pending`|The gid has been forwarded to the ledger but the aggregator does not know if the batch has been delivered. If the batch cannot be delivered then it will be retried.|
 |`other`|The gid has either been settled or was issued by a different aggregator.|
-|`CANISTER_REJECT` (throw)|The aggregator does not have a current stream (after first install or reinstall).|
+|`CANISTER_REJECT` (throw)|The gid is either pending, settled or was issued by a different aggregator. This happens when the aggregator does not have a current stream _and_ does not know whether the previous stream was already closed by the ledger or not (e.g. after first install or after an uninstall-reinstall cycle).|
 |`CANISTER_ERROR` (trap)|The gid belongs to the current stream but has not yet been issued.|
+
+By a _fresh install_ we mean the state after installation or after an uninstall-reinstall cycle.
+The state after a stop-upgrade cycle is not called a fresh install.
+As a rule, one should never upgrade a canister without first stopping it, so that scenario is not considered.
+
+Examples:
+* After a fresh install and before the aggregator receives its stream id from the ledger the response is `CANISTER_REJECT`.
+  This is because the aggregator does not know whether it previously had a stream or not and, if it did, whether that stream is still open at the ledger. Hence it cannot return `other`.
+* After having received a stream id for the first time the response is never `CANISTER_REJECT`. This is true across a stop-upgrade cycle. It is also true after having received notice of a closed stream and while waiting for the new stream id.
 
 #### Standard transitions
 
