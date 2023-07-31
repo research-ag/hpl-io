@@ -1,5 +1,45 @@
 # hpl - The high-performance ledger
 
+## Overview
+
+The hpl is a new token ledger on the internet computer (IC) that is designed from the ground up with a number of key features, goals and characteristics in mind that 
+differentiate it, sometimes radically, from other ledgers.
+These characteristics are as follows.
+
+### Multi-token ledger
+
+Hundreds of thousands of tokens can live in the same ledger.
+This reduces the friction to create a new token down to making a canister call and paying a fee.
+With a single-token ledger it is necessary to obtain ledger source code, modify it, audit it, deploy it and maintain the resulting ledger canister. Here, all that is done for you. 
+
+Furthermore, a multi-token ledger allows more general transactions such as atomic swaps.
+
+### Performance of 10,000+ tps
+
+The ledger is designed such that a Motoko implementation can process significantly more than 10,000 individual transactions per second in a single ledger canister.
+The account model was designed with the performance of implementations in mind such that high speeds can be reached even when the data structures involved hold tens of millions of open accounts.
+
+### Throughput of 10,000 ingress messages
+
+The ledger has two different interfaces for transaction submission per ingress messages and per inter-canister call.
+The architecture is specifically designed such that 10,000 transaction submitted per second by independent external users can reach the ledger.
+To achieve this ingress messages go through aggregators on different subnets.
+It is planned to have ~20 aggregators on 20 different subnets.
+
+The protocol is designed to keep the latency for frontends as small as possible
+despite the fact that submitted transactions require one inter-canister hop.
+
+### Protection against unsolicited 
+
+Users have to allow incoming transfers.
+This is done to avoid regulatory problems with tainted transactions and unwanted airdrops.
+It also avoids security problems resulting from a poisened transaction history or transaction spam.
+
+### Payment flows
+
+Multiple payment flow concepts such as push, pull and allowances are natively supported through the concept of virtual accounts.
+These concepts simplify the programming of services that deal with hpl tokens.
+
 ## Account model
 
 ### Tokens
