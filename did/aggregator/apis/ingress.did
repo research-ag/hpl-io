@@ -1,0 +1,167 @@
+// TxInput describes a transaction. Currently there is only one transaction
+// type, `ftTransfer`. In the future new transaction types will be introduced.
+//
+// The information in TxInput can be seen as _instructions_ to carry out a
+// transaction rather than the transaction itself. When processed, the
+// instructions will lead to an actual transaction. A full description of the
+// resulting transaction can, in certain cases, require more information than
+// what was specified in the intructions. For example, TxInput can specify a
+// `max` amount which will be translated to the real amount available only at
+// processing time. As another example, the sender's principal is not in TxInput
+// because it is implicitly specified as the "caller" who submits the TxInput.
+// But it would of course be required in a complete description of the
+// transaction.
+type TxInput = variant { ftTransfer : FtTransfer };
+
+// FtTransfer describes a fungible token transfer from one account to another.
+// `from` is the sending account.
+// `to` is the receiving account.
+// `assetId` is the id of the token to be transferred.
+// `amount` is the number of tokens to be transferred.
+// Specifying `max` as `amount` transfers the entire available amount in the
+// sending account.
+// `memo` is a vector of blobs which can be used to attach metadata that is
+// relevant for the sender or receiver.
+//
+// Backward compatibility:
+// New optional fields will be added to the record in the future such as, for
+// example, `nonce` and `fee` fields.
+// A `nonce` field, when set, enforces idempotency.
+// A `fee` field, when set, selects one of multiple fee modes.
+type FtTransfer = record {
+  from : AccountRef;
+  to : AccountRef;
+  asset : AssetId;
+  amount : variant { amount : nat; max };
+  memo : vec blob;
+};
+
+type AssetId = nat;
+
+// The sending or receiving account can be an account, virtual account, or
+// the "mint".
+// `sub` specifies the account of the caller with the given account id.
+// `vir` specifies the virtual account of the given owner `principal` with the
+// given `nat` id. The caller must have access to that virtual account or the
+// transfer will fail.
+// `mint` specifies the "mint" of the given asset id. Sending to `mint` burns
+// tokens. Sending from `mint` mints tokens. In both cases, the caller must be
+// the controller of the given asset id or the transfer will fail. Only the
+// controller can mint and burn tokens.
+type AccountRef = variant {
+  sub : nat;
+  vir : record { principal; nat };
+  mint;
+};
+
+// Transactions are assigned a globally unique id (gid) when they are submitted
+// to the aggregator. The global id is valid forever and will never be re-used
+// for a different transaction, even if the transaction fails in processing.
+//
+// Backward compatibilty: The internal structure of GlobalId is not expected to
+// change. If it does then it is advisable to introduce enitrely new functions
+// that return or process the new type of global id.
+type GlobalId = record { nat; nat };
+
+// GidStatus describes the progress made on the processing of a submitted
+// transaction. The aggregator can reports on the progress made with resprect to
+// forwarding the transaction to the ledger. Only the ledger knows if the
+// processing of the transactions succeeded or failed.
+//
+// See README.md for further explanation of the status states.
+//
+// State `queued` contains the transaction's distance from the head of the queue
+// which can be used as an indication for the remaining time before it gets
+// forwarded.
+//
+// Backwards compatibility: In the future, additional data can be returned
+// inside each of the variant cases of GidStatus. Hence clients do not
+// need to wrap the variant inside an opt.
+//
+// In case `queued`, for example, we can add a second nat which represents
+// the distance from the head counted in the unit "weight" (bytes). This
+// provides additional information to the client and would allowe the client to
+// better predict when the transaction will be forwarded.
+//
+// As another example, we can add additional information to the `other` case.
+// Often the aggregator has additional information on the gid.  It may know, for
+// example, if the transaction is processed or dropped.  Newer clients can then
+// use that information.
+//
+// While extending existing cases is allowed, adding entirely new cases would
+// break existing clients. Therefore, a new case can only be introduced if a new
+// function is introduced at the same time _and_ the new case can only be
+// reached by calling the new function. This guarantees that old clients cannot
+// receive new cases (because they don't call the new function).
+//
+// For example, the case `canceled` and a function `cancelTx` can be introduced.
+// The state `canceled` cannot be reached without calling `cancelTx`.
+type GidStatus = variant {
+  queued : record { nat };
+  pending : record {};
+  other : record {};
+};
+
+// The aggregator's ingress interface consists of two functions:
+// * submitAndExecute
+// * txStatus (query)
+type AggregatorIngressAPI = service {
+
+  // `submitAndExecute` submits a transaction to the aggregator. The aggregator
+  // enqueues the transaction and issues a global id.
+  //
+  // Return value is the GidStatus from after enqueueing, which necessarily is
+  // case `queued`. The purpose of returning GidStatus is so that the caller
+  // knows the queue position without having to make another call.
+  //
+  // `submitAndExecute` and `txStatus` are frequently called together and having
+  // the same return type simplifies the calling code.
+  //
+  // The function traps if:
+  //   * A (virtual) account id or asset id is larger than 64 bits
+  //   * `amount` is larger than 128 bits
+  //   * The principal in `vir` is longer than 29 bytes or otherwise invalid
+  //   * The  memo vector is too long (too many entries)
+  //   * An individual memo entry is too long (too many bytes)
+  //   * The combined length of all memos is too large (too many bytes)
+  //   * The internal queue is full (back pressure)
+  // The trap message will contain the reason in descriptive text format.
+  //
+  // The function is subject to ingress message inspection. Any call that
+  // would trap for any of the above reasons will be rejected during inspection.
+  // This will lead to an http 500 error. The caller will not be able to learn
+  // the specific reason why the call failed.
+  //
+  // The aggregator does not know if the accounts in the argument exist, if the
+  // caller has access to the accounts or if there are sufficient funds. These
+  // kind of errors will only be caught later during processing in the ledger.
+  //
+  // Backwards compatibility: In the future, new return values may be added as
+  // positional values after the last one.
+  submitAndExecute : (TxInput) -> (GlobalId, GidStatus);
+
+  // `txStatus` returns the current status of a gid.
+  //
+  // See README.md for the typical process to track a transaction after
+  // submission to the aggregator.
+  //
+  // The return value is:
+  // - trap (CANISTER_ERROR) if any `nat` inside the gid argument exceeds
+  // 64 bits,
+  // - trap (CANISTER_ERROR) if the aggregator knows that the gid has not yet
+  // been issued,
+  // - throw (CANISTER_REJECT) if the aggregator does not know about this gid
+  //
+  // The CANISTER_REJECT happens in the following cases:
+  // - the aggregator does not know whether the gid was issued by itself (before
+  // an upgrade) or by a different aggregator,
+  // - the aggregator has issued the gid but has lost track of it (through an
+  // upgrade)
+  //
+  // The CANISTER_REJECT can happen after a reinstall, an update that did not
+  // preserve state, or after the ledger reset stops the current stream due to a
+  // timeout. It means that the caller has to poll the ledger instead.
+  txStatus : (GlobalId) -> (GidStatus) query;
+};
+
+service : () -> AggregatorIngressAPI;
