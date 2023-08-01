@@ -16,38 +16,49 @@ Furthermore, a multi-token ledger allows more general transactions such as atomi
 
 ### Performance of 10,000+ tps
 
-The ledger is designed such that a Motoko implementation can process significantly more than 10,000 individual transactions per second in a single ledger canister.
+The ledger is designed such that a Motoko implementation can process 10,000+ individual transactions per second in a single ledger canister,
+where each transaction is a transfer for a random pair of from-to accounts.
 The account model was designed with the performance of implementations in mind such that high speeds can be reached even when the data structures involved hold tens of millions of open accounts.
+In other words, it was designed such that an implementation can have, for the most part, linear complexity.
 
 ### Throughput of 10,000 ingress messages
 
-The ledger has two different interfaces for transaction submission per ingress messages and per inter-canister call.
-The architecture is specifically designed such that 10,000 transaction submitted per second by independent external users can reach the ledger.
-To achieve this ingress messages go through aggregators on different subnets.
-It is planned to have ~20 aggregators on 20 different subnets.
+The ledger has two different interfaces for ingress messages and inter-canister calls.
+The architecture is specifically designed such that 10,000 transactions submitted per second by independent external users can reach the ledger.
+To achieve this, ingress messages go through aggregators on different subnets.
+It is planned to have ~20 aggregators on 20 different subnets and have each aggregator receive ~500 tps.
 
+Going through an aggregator unavoidably introduces latency for transactions submitted by ingress messages.
 The protocol is designed to keep the latency for frontends as small as possible
-despite the fact that submitted transactions require one inter-canister hop.
+given the extra inter-canister hop.
 
 ### Protection against unsolicited 
 
-Users have to allow incoming transfers.
-This is done to avoid regulatory problems with tainted transactions and unwanted airdrops.
+Users have to allow incoming transfers into their accounts.
+This is done to avoid regulatory problems with tainted coins and unwanted airdrops.
 It also avoids security problems resulting from a poisened transaction history or transaction spam.
 
 ### Payment flows
 
-Multiple payment flow concepts such as push, pull and allowances are natively supported through the concept of virtual accounts.
-These concepts simplify the programming of services that deal with hpl tokens.
+Multiple payment flows such as push, pull, approve-transfer and allowances are natively supported through the concept of virtual accounts.
+This simplifies the programming of services that deal with hpl tokens.
+
+### Standard-compliance
+
+The goals of the hpl are quite new.
+It is therefore unfortunately not possible to comply with ICRC-1 or other standards.
+For example, in the case of ICRC-1, there are two limiting factors that make it impossible:
+
+* The ICRC-1 API is specifically designed for a single token per canister.
+* When submitting a transaction, the ICRC-1 API requires an immediate response about the success of the transfer. This is incompatible with an additional inter-canister hop that works in batches.
 
 ## Account model
 
 ### Tokens
 
-The ledger is a multi-token ledger.
-It currently supports only fungible tokens.
+We currently support only fungible tokens.
 A fungible token is identified by its asset id (type `nat`).
-Token quantities are represented as `nat`s that must fit in 64 bits.
+Token quantities are represented as a `nat` that must fit in 64 bits.
 Consequently, the total supply of any tokens is limited to 2^64 - 1. 
 
 ### Principals and subaccounts
@@ -68,20 +79,20 @@ Transfers from or to accounts fail if the transferred asset id does not match th
 
 ### Virtual accounts (part 1)
 
-Unlike in most other ledgers, it is not possible for one account owner A to deposit
-tokens into any account of another owner B (even if the asset id matches the account unit).
-Instead, B has to first grant access to the sender A on a per-account basis. 
+Unlike in most other ledgers, it is not possible for one account owner `A` to deposit
+tokens into any account of another owner `B` (even if the asset id matches the account unit).
+Instead, `B` has to first grant access to the sender `A` on a per-account basis. 
 This happens by opening so-called virtual accounts.
 Without virtual accounts the only transfers possible would be for one owner to transfer between his own accounts.
 
-A virtual account V of an owner A specifies:
-* a *backing account* X which is an account of A in the sense above (a "physical" account)
-* an *access principal* B.
-The only principal that can access V in a transfer, 
+A virtual account `V` of an owner `A` specifies:
+* a *backing account* `X` which is an account of `A` in the sense above (a "physical" account)
+* an *access principal* `B`.
+The only principal that can access `V` in a transfer, 
 either as sending or receiving account,
-is B.
-Even A cannot access V in a transfer.
-When a transfer is executed then any balance change affecting V is applied to X.
+is `B`.
+Even `A` cannot access `V` in a transfer.
+When a transfer is executed then any balance change affecting `V` is applied to X.
 
 The access principal of a virtual account is permanent, i.e. cannot be changed.
 
@@ -95,26 +106,26 @@ Virtual accounts need to be openend explicitly by their owner.
 A virtual account can be viewed as a "gated port" to a physical account.
 It has a port id (the virtual account id) and is gated by the access principal.
 
-Transfers created by a principal A can:
-* send from a physical account of A to another physical account of A
-* send from a physical account of A to a virtual account of any principal with access principal A
-* send from a virtual account of any principal with access principal A to a physical account of A
-* send from a virtual account of any principal with access principal A to another virtual account of any other principal with access principal A
+Transfers created by a principal `A` can:
+* send from a physical account of `A` to another physical account of `A`
+* send from a physical account of `A` to a virtual account of any principal with access principal `A`
+* send from a virtual account of any principal with access principal `A` to a physical account of `A`
+* send from a virtual account of any principal with access principal `A` to another virtual account of any other principal with access principal `A`
 
 ### Virtual accounts (part 2)
 
 Virtual accounts also have balances.
-The balance of a virtual account V is independent of the balance in the backing subaccount X.
+The balance of a virtual account `V` is independent of the balance in the backing subaccount `X`.
 It can be lower or higher.
-V's balance can be freely set or adjusted up and down by the owner.
+`V`'s balance can be freely set or adjusted up and down by the owner.
 
-When a transfer is executed involving V then the transfer's balance change is applied to V's balance *and* to X's balance.
+When a transfer is executed involving `V` then the transfer's balance change is applied to `V`'s balance *and* to X's balance.
 If the balance change is negative (i.e. the transfer is outgoing)
-then there must be sufficient balance in V *and* in X or the tranfer will fail.
+then there must be sufficient balance in `V` *and* in `X` or the tranfer will fail.
 
-For incoming transfers V's balance can be used to track the cumulative deposits made by the access principal B.
+For incoming transfers `V`'s balance can be used to track the cumulative deposits made by the access principal `B`.
 
-For outgoing transfers V's balance can be used as an allowance to B because B can withdraw only up to V's balance even if X's balance is higher.
+For outgoing transfers `V`'s balance can be used as an allowance to `B` because `B` can withdraw only up to `V`'s balance even if `X`'s balance is higher.
 
 Thus virtual accounts as a concept have similarities with allowance and approve-transfer methods. 
 
@@ -124,14 +135,14 @@ A transfer is described by the following data:
 
 |Field|Description|
 |---|---|
-|caller|The principal who submits the transfer.|
-|from|The account reference of the sending account. A physical account of caller of a virtual account with access principal A.|
-|to|The account reference of the receiving account. A physical account of caller of a virtual account with access principal A.|
+|caller|The principal `A` who submits the transfer.|
+|from|The account reference of the sending account. A physical account of `A` or a virtual account with access principal `A`.|
+|to|The account reference of the receiving account. A physical account of `A` or a virtual account with access principal `A`.|
 |asset id|The unit to transfer.|
-|amount|The quantity to transfer or the directive "max".|
+|amount|The quantity to transfer or the directive `max`.|
 |memo|An array of blobs.|
 
-The amount directive "max" transfers the entire balance of the sending account at the time of execution of the transfer.
+The amount directive `max` transfers the entire balance of the sending account at the time of execution of the transfer.
 
 The memo can hold arbitrary meta data and is irrelevant for the execution of the transfer. 
 
@@ -153,7 +164,7 @@ Forwarding to the ledger happens at regular intervals triggered by the heartbeat
 
 During submission the transaction undergoes only superficial checks.
 It is not enough to say whether the transaction will succeed or not.
-If the superficial checks pass then the aggregator returns a transaction id called "global id" (short "gid").
+If the superficial checks pass then the aggregator returns a transaction id called *global id* (short *gid*).
 The user uses the gid to track the status and final result of the transaction via query calls.
 Depending on the progress made, the user has to query the aggregator or the ledger, 
 and sometimes both.
@@ -167,29 +178,30 @@ in the face of race conditions and other edge cases such as canister restarts.
 Aggregator and ledger set up a communication channel called a _stream_.
 Streams can be opened and closed (but not re-opened).
 The ledger has authority over the state of the stream.
+At any point in time there it at most one stream open per aggregator.
 The following actions are possible:
 * The aggregator requests from the ledger to open a new stream.
 * The aggregator requests from the ledger to close the open stream.
 * The ledger closes an open stream and notifies the aggregator.
 
-At any point in time there it at most one stream open per aggregator.
 The aggregator can have the following states:
 * No stream (after first install or reinstall)
 * A current stream which is open
 * A current stream which is closed
 
-Gids belongs to one and only one stream.
+A gid belongs to one and only one stream.
+The stream that it belongs to can be identified because the gid contains a stream id.
 A gid can only have been issued when its stream was open (at the aggregator).
-A gid cannot be forwarded anymore once its stream is closed (at the ledger).
+A gid can only be accepted by the ledger when its stream is open (at the ledger).
 
 ### Leder gid status states
 
 A gid at the ledger can have the following states:
 
-* processed : has been received, all received transactions are immediately processed
-* awaited : its stream is open has not been received yet  
-* dropped : has not been received and its stream has been closed
-* invalid : does not belong to a stream that has ever been opened
+* _processed_ : has been received, all received transactions are immediately processed
+* _awaited_ : its stream is open has not been received yet  
+* *dropped* : has not been received and its stream has been closed
+* *invalid* : does not belong to a stream that has ever been opened
 
 We say a gid is _settled_ if it is either processed or dropped. 
 
@@ -206,8 +218,8 @@ It returns one of the following states or traps:
 The status `processed` does not yet say anything about the result of the transaction.
 The result is a different data point and can be `success` or `failure`.
 
-Note:
-The ledger returns `awaited` for gids that have not yet been issued by the aggregator and that may or may not be issued in the future.
+The status `awaited` does not necessarily mean that the gid has actually been issued by the aggregator because the ledger does not know that information.
+It may also mean that the aggregator can issue the gid in the future.
 
 #### Transition diagram
 ```mermaid
