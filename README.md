@@ -1,5 +1,13 @@
 # hpl - The high-performance ledger
 
+## Demo
+
+Test ledger canister id: rqx66-eyaaa-aaaap-aaona-cai
+
+Demo frontend:  https://iimu7-hiaaa-aaaak-qaata-cai.icp0.io/
+
+The aggregators can be listed by calling "list all" in the demo frontend.
+
 ## Overview
 
 The hpl is a new token ledger on the internet computer (IC) that is designed from the ground up with a number of key features, goals and characteristics in mind that 
@@ -174,6 +182,32 @@ and sometimes both.
 We will explain the possible status states of a transaction in detail now.
 We will also provide a protocol that reliably determines the status of a transaction
 in the face of race conditions and other edge cases such as canister restarts.
+
+### Error handling
+
+The philosophy of error handling in all canisters is as follows.
+
+A trap (CANISTER_ERROR) means that there is an error on the receiver side of
+the call. For example, the receiver can be stopping, stopped, running but
+uninitialized, or there could be a bug in the receiver. Traps are considered
+temporary errors and the caller can retry the call later. For example,
+stopping/stopped are assumed to be transitional states of an upgrade cycle
+and are therefore temporary. Bugs in the receiver code are assumed to get
+fixed eventually through an upgrade and are therefore temporary as well.
+
+A throw (CANISTER_REJECT) means that there is an error on the sender side of
+the call. For example, the sender has passed invalid arguments or was not
+authorized to make the call. This is a bug on the sender side because the
+sender should have never made the call with the given arguments. Therefore
+the sender is not expected to handle the response programmatically.
+
+In all other cases, i.e. if an error is expected to occur in normal operation
+and if the caller is expected to handle it programmatically, then an "graceful"
+error is returned. This can be a null value in an option type or a dedicated
+error case in a variant. A typical case is calls that can fail because of race
+conditions. For example, an attempt to access an account that has been deleted
+by a concurrent process. Those case occur naturally in normal operation and the
+caller is expected to handle them.
 
 ### Streams
 
