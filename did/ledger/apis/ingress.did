@@ -36,7 +36,9 @@ type Time = nat64;
 // the progress made on the processing of a submitted transaction. See README.md
 // for further explanation of the status states.
 //
-// State `processed` includes the processing result.
+// State `processed` includes the processing result. A null value means that the
+// processing result has already been archived. The caller must then call the
+// archive.
 //
 // Backwards compatibility:
 // In the future, additional data can be returned inside each of the variant
@@ -45,9 +47,8 @@ type Time = nat64;
 // an opt.
 type GidStatus = variant {
   awaited : record { };
-  processed : record { TxResult };
+  processed : record { opt TxResult };
   dropped : record {};
-  archived : record {};
 };
 
 // This type describes the result of processing a transaction.
