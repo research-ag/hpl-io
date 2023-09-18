@@ -1,5 +1,5 @@
-// This file describes the "sub-API" of the ledger that is intended for use by
-// ingress messages.
+// This file is a "sub api". It describes the part of the API of the ledger that
+// is intended for use by ingress messages.
 //
 // It describes the API exactly as implemented, i.e. the types of values and
 // return values are structurally equivalent to the ones derived from the Motoko
@@ -8,28 +8,35 @@
 type AssetId = nat;
 type SubId = nat;
 type VirId = nat;
+type RemoteId = record { principal; nat };
 type GlobalId = record { nat; nat };
 
-// The only account type at the moment is ft (fungible token).  The state of an
-// ft account is defined by the pair of asset id and quantity.
-//
-// Backward compatibility: see [1]
-type AccountState = variant { ft : record { AssetId; nat } };
-
-// The two individual components of AccountState are called AccountType and
-// AssetState. Note that AccountType of an account is immutable while the
-// AssetState is mutable.
+// The only account type at the moment is ft (fungible token). A fungible token
+// is defined by its asset id. The AccountType of a given account is immutable.
 //
 // Backward compatibility: see [1]
 type AccountType = variant { ft : AssetId };
-type AssetState = variant { ft : nat };
+
+// The mutable state of a fungible token account is defined by its balance.
+//
+// Backward compatibility: see [1]
+type AccountState = variant { ft : nat };
+
+// The supply of a fungible token
+type FtSupply = nat;
+
+// Timestamp measured in nanoseconds since the beginning of the Unix epoch. We
+// only need timestamps in the future, hence negative values are not allowed.
+//
+// In the context of account expiration the sentinel value of 0 means that
+// the account does not expire.
+type Time = nat64;
 
 // A gid (global id) is a globally unique transaction id. GidStatus describes
 // the progress made on the processing of a submitted transaction. See README.md
 // for further explanation of the status states.
-// 
-// State `awaited` includes the principal of the aggregator from which the
-// gid is awaited. State `processed` includes the processing result.
+//
+// State `processed` includes the processing result.
 //
 // Backwards compatibility:
 // In the future, additional data can be returned inside each of the variant
@@ -37,9 +44,10 @@ type AssetState = variant { ft : nat };
 // break existing clients. Hence clients do not need to wrap the variant inside
 // an opt.
 type GidStatus = variant {
-  awaited : record { principal };
+  awaited : record { };
   processed : record { TxResult };
   dropped : record {};
+  archived : record {};
 };
 
 // This type describes the result of processing a transaction.
@@ -57,6 +65,11 @@ type TxResult = variant {
 // "amount" is the amount credited to the receiver and "amount + fee" is the
 // amount debited to the sender.
 //
+// The variant cases inside TxOutput match the cases in the corresponding
+// TxInput type used by the aggregator. Usually, the effect of a transaction can
+// be completely understood if TxInput and TxOutput of that transaction are
+// known.
+//
 // The type ProcessingError describes the reason why an unsuccessfully processed
 // transaction failed.
 //
@@ -65,8 +78,12 @@ type TxResult = variant {
 // for those transactions that it has itself submitted. If that is true then the
 // client code will never receive an unknown variant case here, hence the client
 // code can but does not need to wrap these inside an opt.
-type TxOutput = variant { ftTransfer : record { amount : nat; fee : nat } };
-type ProcessingError = variant { ftTransfer : FtTransferErrors };
+type TxOutput = variant {
+  ftTransfer : record { amount : nat; fee : nat };
+};
+type ProcessingError = variant {
+  ftTransfer : FtTransferErrors;
+};
 
 // This type describes the reason why an ftTransfer failed.
 //
@@ -75,9 +92,9 @@ type ProcessingError = variant { ftTransfer : FtTransferErrors };
 // "MismatchInRemotePrincipal" : principal has no access to virtual account
 // "NotAController" : minting or burning attemped by the wrong principal
 // "UnknownFtAsset" : an asset id in the transaction does not exist
-// "UnknownPrincipal" : a principal in the transction does not exist
+// "UnknownPrincipal" : an account owner in the transaction does not exist
 // "UnknownSubaccount" : an account in the transaction does not exist
-// "UnknownVirtualAccount" : a virtual account in the tx does not exist
+// "UnknownVirtualAccount" : a virtual account in the transaction does not exist
 //
 // Backwards compatibility: see [1].
 type FtTransferErrors = variant {
@@ -86,79 +103,163 @@ type FtTransferErrors = variant {
   InvalidArguments : text;
 };
 
+// In the query functions below, we sometimes allow to select ranges of ids. An
+// IdRange is a pair of ids (from, to) which means the inclusive interval
+// [from,to]. The first id must be smaller than or equal to the second id. If
+// the second id is `null` then the range goes all the way to the last possible
+// value.
+type IdRange = record { nat; opt nat };
+
+// In the query functions below, we sometimes allow to select a single id or a
+// range or the concatenation of single ids and ranges. Note that `cat` is
+// indeed a "concatenation" as opposed to a "union" which means that repetitions
+// are not removed. For example a selector such as
+//   `cat = vec { id = 1; idRange = record { 0; 1 } }`
+// will lead to a repetition of id 1 in the output.
+type IdSelector = variant {
+  id : nat;
+  idRange : IdRange;
+  cat : vec variant { id : nat; idRange : IdRange };
+};
+
+// An IdSelector without the ability of selecting ranges. Used for selecting
+// remote accounts.
+type RemoteSelector = variant {
+  id : RemoteId;
+  cat : vec variant { id : RemoteId };
+};
+
 // The ledger's ingress interface has the following sections:
-// * account management queries
-// * account management updates
-// * token management queries
-// * token mamnagement updates
-// * transaction processing queries
+//
+// * account management queries: accountInfo, virtualAccountInfo, nAccounts, nVirtualAccounts, state
+// * account management updates: openAccounts, openVirtualAccount, deleteVirtualAccount, updateVirtualAccount
+// * token management queries: ftInfo, nFtAssets
+// * token management updates: createFungibleToken
+// * transaction processing queries: txStatus
 //
 // Note: Account management queries are "non-public", i.e. only the legitimate
 // owner of an account has access to those queries. Token management and
 // transaction processing queries are "public".
+//
+// Generally, the following holds for this canister interface:
+//
+// A trap (CANISTER_ERROR) means that there is an error on the receiver side of
+// the call. For example, the receiver can be stopping, stopped, running but
+// uninitialized, or there could be a bug in the receiver. Traps are considered
+// temporary errors and the caller can retry the call later. For example,
+// stopping/stopped are assumed to be transitional states of an upgrade cycle
+// and are therefore temporary. Bugs in the receiver code are assumed to get
+// fixed eventually through an upgrade and are therefore temporary as well.
+// 
+// A throw (CANISTER_REJECT) means that there is an error on the sender side of
+// the call. For example, the sender has passed invalid arguments or was not
+// authorized to make the call. This is a bug on the sender side because the
+// sender should have never made the call with the given arguments. Therefore
+// the sender is not expected to handle the response programmatically.
+//
+// In particular, if the ledger is uninitialized then all calls will trap.
 type LedgerIngressAPI = service {
-  // === Section: Account management queries
+// === Section: Account management queries
 
-  // Return the state of the caller's own account given by SubId.
+  // Return the immutable data associated with the selected accounts. The
+  // immutable data of an account consists of:
+  // - the type (the ft asset id).
+  //
+  // Note: This function is called by the owner of the account.
   //
   // Return value is:
-  // - trap (CANISTER_ERROR) if caller is unknown
-  // - throw (CANISTER_REJECT) if caller is known but subId is unknown
-  accountState : (SubId) -> (AccountState) query;
+  // - throw (CANISTER_REJECT) if caller is unknown or any of the selected
+  // subIds is unknown
+  // - a vector of pairs (account id, account type)
+  //
+  // Note: The IdSelector can be crafted in a way the the retuned vector contain
+  // repetitions. For example, one can repeat `id = 0` multiple times in the
+  // selector or one can include `id = 0` as well as `idRange = record { 0; 1}`.
+  // In both cases the account with id 0 will appear twice in the return value.
+  // It is the responsibility of the caller to handle repetitions or to avoid
+  // them by crafting the argument correctly.
+  accountInfo : (IdSelector) -> (vec record { SubId; AccountType }) query;
 
-  // Return the immutable data of a virtual account, which is:
+  // Return the immutable data of virtual accounts, which is:
   // - the type (the ft asset id),
   // - the access principal.
   //
-  // Note: This function is called by the owner of the virtual account.  The
-  // access principal calls `remoteState` instead.
-  //
-  // Return value is:
-  // - trap (CANISTER_ERROR) if caller is unknown
-  // - throw (CANISTER_REJECT) if caller is known but virId is unknown or deleted
-  virtualAccountInfo : (VirId) -> (AccountType, principal) query;
-
-  // Return the mutable data of a virtual account, which is:
-  // - the asset state (the ft quantity),
-  // - the backing subaccount,
-  // - the expiration
-  //
   // Note: This function is called by the owner of the virtual account.
-  // The access principal calls `remoteState` instead.
   //
   // Return value is:
-  // - trap (CANISTER_ERROR) if caller is unknown
-  // - throw (CANISTER_REJECT) if caller is known but virId is unknown or deleted
-  virtualAccountState : (VirId) -> (AssetState, SubId, nat64) query;
+  // - throw (CANISTER_REJECT) if caller is unknown or any of the selected
+  // virIds is unknown
+  // - a vector of pairs (virtual account id, opt virtual account info) where
+  // the second component is null if the virtual account has been deleted
+  virtualAccountInfo : (IdSelector) -> (
+    vec record {
+      VirId;
+      opt record { AccountType; principal };
+    }
+  ) query;
 
   // Return the number of accounts of the caller.
   //
   // Return value is:
-  // - trap (CANISTER_ERROR) if caller is unknown
+  // - throw (CANISTER_REJECT) if caller is unknown
   nAccounts : () -> (nat) query;
 
   // Return the number of virtual accounts of the caller.
   //
   // Return value is:
-  // - trap (CANISTER_ERROR) if caller is unknown
+  // - throw (CANISTER_REJECT) if caller is unknown
   nVirtualAccounts : () -> (nat) query;
 
-  // Return the (mutable and immutable) data of a virtual account relevant to
-  // the access principal, which is:
-  // - the account state,
-  // - the expiration
+  // Atomic query for various mutable states. The functions can be used to query
+  // any combination of account states, virtual account states, remote account
+  // states and token supplies. The accounts and virtual accounts must be ownwed
+  // by the caller. For the remote accounts the caller must be the access
+  // principal.
   //
-  // Note: This function is called by the access principal. The owner principal
-  // calls `virtualAccountState` instead.
+  // The arguments are selectors. A null value for a record field means the
+  // empty selector.
   //
-  // The arguments are the virtual account owner and virtual account id.
+  // The return value for non-null accounts is:
+  // - throw (CANISTER_REJECT) if the caller is unknown or any of the selected
+  // SubIds is unknown
   //
-  // Return value is:
-  // - trap (CANISTER_ERROR) if:
-  //   - the principal (argument) is unknown as an owner
-  //   - the principal is known but virId is unknown or deleted
-  //   - caller is not the access principal
-  remoteState : (principal, VirId) -> (AccountState, nat64) query;
+  // The return value for non-null virtual accounts is:
+  // - throw (CANISTER_REJECT) if the caller is unknown or any of the selected
+  // VirIds is unknown
+  // - a null entry in the returned vector if the virtual account has been deleted
+  //
+  // The return value for non-null ftSupplies is:
+  // - throw (CANISTER_REJECT) if any of the selected AssetIds is unknown
+  //
+  // The return value for non-null remote accounts is:
+  // - a null entry in the returned vector if the remote account is unknown, has
+  // been deleted, or the caller does not have access.
+  //
+  // Note that a caller cannot learn information about virtual accounts of other
+  // principals by querying them as remote accounts. The response will always be
+  // the same (null) regardless of whether the virtual account in inaccessible,
+  // does not exist or has been deleted.
+  state : (
+    record {
+      accounts : opt IdSelector;
+      ftSupplies : opt IdSelector;
+      remoteAccounts : opt RemoteSelector;
+      virtualAccounts : opt IdSelector;
+    }
+  ) -> (
+    record {
+      accounts : vec record { SubId; AccountState };
+      ftSupplies : vec record { AssetId; FtSupply };
+      remoteAccounts : vec record {
+        RemoteId;
+        opt record { AccountState; Time };
+      };
+      virtualAccounts : vec record {
+        VirId;
+        opt record { AccountState; SubId; Time };
+      };
+    }
+  ) query;
 
   // === Section: Account management updates
 
@@ -188,20 +289,26 @@ type LedgerIngressAPI = service {
   // Open one new virtual account for the caller.
   //
   // Arguments are:
-  // - backing account by SubId
+  // - account type (i.e. ft asset id)
   // - access principal
-  // - initial virtual account state
+  // - initial virtual account state (i.e. ft asset balance)
+  // - backing account by SubId
   // - initial expiration
   //
+  // Note: The first two arguments define the immutable virtual account data.
+  // The last three arguments define the initial state of the mutable virtual
+  // account data.
+  //
   // Return value is:
-  // - trap (CANISTER_ERROR) if caller is unknown
+  // - throw (CANISTER_REJECT) if caller is unknown
   // - ok : index of the new virtual account
   // - err NoSpaceForAccount if caller has too many virtual accounts already
   // - err InvalidArguments with text:
   //   - "UnknownSubaccount" if backing account is unknown
-  //   - "MismatchInAsset" if backing account does not match the asset id
+  //   - "MismatchInAsset" if backing account does not match the specified
+  //   AccountType
   //   - "InvalidExpirationTime" if expiration time lies in the past
-  openVirtualAccount : (SubId, principal, AccountState, nat64) -> (
+  openVirtualAccount : (AccountType, principal, AccountState, SubId, Time) -> (
     variant {
       ok : record { id : VirId };
       err : variant { NoSpaceForAccount; InvalidArguments : text };
@@ -211,14 +318,14 @@ type LedgerIngressAPI = service {
   // Delete a virtual account of the caller.
   //
   // Return value is:
-  // - trap (CANISTER_ERROR) if caller is unknown
+  // - throw (CANISTER_REJECT) if caller is unknown
   // - ok
   // - err DeletedVirtualAccount if virtual account has already been deleted
   // - err InvalidArguments with text:
   //   - "UnknownVirtualAccount" if virtual account id is not known
   deleteVirtualAccount : (VirId) -> (
     variant {
-      ok;
+      ok : variant { ft : nat };
       err : variant { DeletedVirtualAccount; InvalidArguments : text };
     }
   );
@@ -228,28 +335,29 @@ type LedgerIngressAPI = service {
   // Argument is the virtual account id and the update record.
   //
   // Update record: We can update the virtual account state, backing account and
-  // expiration.  A null value for any of those fields means that the value will
-  // remain unchanged. The state is updated by changing the ft balance. This
-  // can be done by setting a new absolute value for the balance or by
-  // incrementing or decrementing it by providing the delta.
+  // expiration. A null value for any of those fields means that the existing
+  // values will remain unchanged. The account state is updated by changing the
+  // ft balance. This can be done by setting a new absolute value for the
+  // balance or by incrementing or decrementing it by providing the delta.
   //
   // Return value is:
-  // - trap (CANISTER_ERROR) if caller is unknown
+  // - throw (CANISTER_REJECT) if caller is unknown
   // - ok : new balance (nat) and the delta (int) that was the result of the
   // change
   // - err DeletedVirtualAccount if virtual account has already been deleted
   // - err InsufficientFunds if a decrement operation was not possible
   // - err InvalidArguments with text:
-  //   - "UnknownVirtualAccount" if virtual account id is not known
+  //   - "UnknownVirtualAccount" if virtual account id is unknown
   //   - "UnknownSubaccount" if new backing account is unknown
-  //   - "MismatchInAsset" if new backing account does not match the asset id
+  //   - "MismatchInAsset" if new backing account does not match the account
+  //   type
   //   - "InvalidExpirationTime" if expiration time lies in the past
   updateVirtualAccount : (
     VirId,
     record {
       state : opt variant { ft_set : nat; ft_inc : nat; ft_dec : nat };
       backingAccount : opt SubId;
-      expiration : opt nat64;
+      expiration : opt Time;
     },
   ) -> (
     variant {
@@ -264,18 +372,11 @@ type LedgerIngressAPI = service {
 
   // === Section: Token management queries
 
-  // Return the total supply of a fungible token.
+  // Return the immutable information for a fungible token.
   //
   // Return value is:
   // - throw (CANISTER_REJECT) if asset id is unknown
-  // - the total supply of the token
-  ftSupply : (AssetId) -> (nat) query;
-
-  // Return the static information for a fungible token.
-  //
-  // Return value is:
-  // - throw (CANISTER_REJECT) if asset id is unknown
-  // - the static information record of the token
+  // - the immutable information record of the token
   //
   // Note: The "description" is a self-description of the token and should
   // never be trusted.
@@ -283,23 +384,29 @@ type LedgerIngressAPI = service {
   // Backwards compatibility:
   // New fields can be added to the returned record. A caller who does not know
   // about them will not see them.
-  ftInfo : (AssetId) -> (
-    record { controller : principal; decimals : nat8; description : text }
+  ftInfo : (IdSelector) -> (
+    vec record {
+      AssetId;
+      record { controller : principal; decimals : nat8; description : text };
+    }
   ) query;
+
+  // Return the number of asset ids issued for fungible tokens.
+  nFtAssets : () -> (nat) query;
 
   // === Section: Token management updates
 
-  // Register a new fungible token, the caller becomes a controller of it.
+  // Register a new fungible token, the caller becomes the controller of it.
   //
   // Arguments are:
   // - the token decimals
   // - the token's self-description
   //
   // Return value is:
-  // - trap (CANISTER_ERROR) if the description exceeds the allowed length
+  // - throw (CANISTER_REJECT) if the description exceeds the allowed length
   // - ok : the asset id assigned to the new token
   // - err FeeError if the call did not carry the fee required to register a new token
-  // - err NoSpace if too many token are already registered
+  // - err NoSpace if too many tokens are already registered
   // - err TooLongDescription if the description exceeds the allowed length
   createFungibleToken : (nat8, text) -> (
     variant {
@@ -310,15 +417,37 @@ type LedgerIngressAPI = service {
 
   // === Section: Transaction processing queries
 
-  // Return the list of aggregators (their principals).
-  aggregators : () -> (vec principal) query;
+  // Return the list of aggregators (their principals) and priority values
+  // (nat). The client is advised to use the priority values when randomly
+  // choosing an aggregator. An aggregator's probability to be chosen is
+  // proportional to its priority value. The sum of all priority values
+  // represent a probability of 1. The ledger can use this mechanism to control
+  // load balancing between aggregators.
+  aggregators : () -> (vec record { principal; nat }) query;
 
-  // Return the status of a transaction given by its global id (gid).
+  // Return the status of one or more streams given by their stream ids.
+  //
+  // Return value is:
+  // - throw (CANISTER_REJECT) if any selected stream id has not yet been issued
+  streamStatus : (IdSelector) -> (
+    vec record {
+      nat;
+      record {
+        source : variant { aggregator : principal; internal };
+        closed : bool;
+        lastActive : Time;
+        length : nat;
+      };
+    }
+  ) query;
+
+  // Return the status of a transactions given by their global id (gid).
   //
   // Return value is:
   // - throw (CANISTER_REJECT) if the stream id inside the gid has not yet been
   // issued
-  txStatus : (GlobalId) -> (GidStatus) query;
+  txStatus : (vec GlobalId) -> (vec GidStatus) query;
+
 };
 
 service : () -> LedgerIngressAPI;

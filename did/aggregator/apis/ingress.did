@@ -54,6 +54,10 @@ type AccountRef = variant {
   mint;
 };
 
+// Timestamp measured in nanoseconds since the beginning of the Unix epoch
+// We only need timestamps in the future, hence negative values are not allowed.
+type Time = nat64;
+
 // Transactions are assigned a globally unique id (gid) when they are submitted
 // to the aggregator. The global id is valid forever and will never be re-used
 // for a different transaction, even if the transaction fails in processing.
@@ -73,6 +77,21 @@ type GlobalId = record { nat; nat };
 // State `queued` contains the transaction's distance from the head of the queue
 // which can be used as an indication for the remaining time before it gets
 // forwarded.
+//
+// State `other` contains the last timestamp received from the ledger. If the
+// client subsequently queries the ledger for the same gid then it should ignore
+// any response that is older than this timestamp.
+//
+// State `other` contains a variant that is either #settled or
+// #settledIfIssuedHere. #settled means that the aggregator knows for sure that
+// the gid has been settled at the ledger. The caller can rely on this fact in
+// all circumstances. #settledIfIssuedHere means that the aggregator knows that
+// the gid has been settled at the ledger or it was issued by a different
+// aggregator. In other words, if it was issued by this aggregator then it is
+// guaranteed to be settled. But the caller can only conclude that the gid is
+// settled if the caller is certain to have asked the right aggregator (the one
+// who issued it). If the caller is not certain about that then it cannot
+// conclude anything.
 //
 // Backwards compatibility: In the future, additional data can be returned
 // inside each of the variant cases of GidStatus. Hence clients do not
@@ -99,38 +118,78 @@ type GlobalId = record { nat; nat };
 type GidStatus = variant {
   queued : record { nat };
   pending : record {};
-  other : record {};
+  other : record { Time; variant { settled; settledIfIssuedHere } };
+};
+
+// StreamStatus describes that status of a sender's stream, including the associated queue.
+// 
+// id: id which the ledger uses to identify the stream.
+//
+// received: number of txs that the aggregator knows have been received by the
+// ledger = stream position of the first pending tx.
+//
+// sent: number of txs that have been sent to the ledger, i.e. the ones that
+// have been received plus the ones that are in flight = stream position of
+// the first queued tx.
+//
+// length: number of all txs that have been added to the stream, i.e. the ones
+// that have been sent plus the ones that are queued = stream position of the
+// next tx that is added to the stream.
+//
+// At all times: received <= sent <= length
+type StreamStatus = record {
+  id : nat;
+  received : nat;
+  sent : nat;
+  length : nat;
 };
 
 // The aggregator's ingress interface consists of two functions:
 // * submitAndExecute
 // * txStatus (query)
+//
+// Generally, the following holds for this canister interface:
+//
+// A trap (CANISTER_ERROR) means that there is an error on the receiver side of
+// the call. For example, the receiver can be stopping, stopped, running but
+// uninitialized, or there could be a bug in the receiver. Traps are considered
+// temporary errors and the caller can retry the call later. For example,
+// stopping/stopped are assumed to be transitional states of an upgrade cycle
+// and are therefore temporary. Bugs in the receiver code are assumed to get
+// fixed eventually through an upgrade and are therefore temporary as well.
+// 
+// A throw (CANISTER_REJECT) means that there is an error on the sender side of
+// the call. For example, the sender has passed invalid arguments or was not
+// authorized to make the call. This is a bug on the sender side because the
+// sender should have never made the call with the given arguments. Therefore
+// the sender is not expected to handle the response programmatically.
+//
+// In particular, if the aggregator is uninitialized or is shut down then all
+// calls will trap.
 type AggregatorIngressAPI = service {
 
-  // `submitAndExecute` submits a transaction to the aggregator. The aggregator
-  // enqueues the transaction and issues a global id.
+  // `submitAndExecute` submits transactions to the aggregator. The aggregator
+  // enqueues transactions and issues a global id for each of them.
   //
-  // Return value is the GidStatus from after enqueueing, which necessarily is
-  // case `queued`. The purpose of returning GidStatus is so that the caller
-  // knows the queue position without having to make another call.
+  // `submitAndExecute` and `txStatus` are frequently called together.
   //
-  // `submitAndExecute` and `txStatus` are frequently called together and having
-  // the same return type simplifies the calling code.
-  //
-  // The function traps if:
+  // The function throws (CANISTER_REJECT) if:
   //   * A (virtual) account id or asset id is larger than 64 bits
   //   * `amount` is larger than 128 bits
   //   * The principal in `vir` is longer than 29 bytes or otherwise invalid
   //   * The  memo vector is too long (too many entries)
   //   * An individual memo entry is too long (too many bytes)
   //   * The combined length of all memos is too large (too many bytes)
-  //   * The internal queue is full (back pressure)
-  // The trap message will contain the reason in descriptive text format.
+  // The reject message will contain the reason in descriptive text format.
   //
-  // The function is subject to ingress message inspection. Any call that
-  // would trap for any of the above reasons will be rejected during inspection.
-  // This will lead to an http 500 error. The caller will not be able to learn
-  // the specific reason why the call failed.
+  // The function traps (CANISTER_ERROR) if:
+  //   * The internal queue is full (back pressure)
+  // The reject message will contain the reason in descriptive text format.
+  // 
+  // The function is subject to ingress message inspection. Any call that would
+  // throw for any of the above reasons will be rejected during inspection.
+  // This will lead to an http 500 error. The caller will, unfortunately, not be
+  // able to learn the specific reason why the call failed.
   //
   // The aggregator does not know if the accounts in the argument exist, if the
   // caller has access to the accounts or if there are sufficient funds. These
@@ -138,7 +197,7 @@ type AggregatorIngressAPI = service {
   //
   // Backwards compatibility: In the future, new return values may be added as
   // positional values after the last one.
-  submitAndExecute : (TxInput) -> (GlobalId, GidStatus);
+  submitAndExecute : (vec TxInput) -> (vec GlobalId);
 
   // `txStatus` returns the current status of a gid.
   //
@@ -146,22 +205,34 @@ type AggregatorIngressAPI = service {
   // submission to the aggregator.
   //
   // The return value is:
-  // - trap (CANISTER_ERROR) if any `nat` inside the gid argument exceeds
+  // - throw (CANISTER_REJECT) if any `nat` inside the gid argument exceeds
   // 64 bits,
-  // - trap (CANISTER_ERROR) if the aggregator knows that the gid has not yet
+  // - throw (CANISTER_REJECT) if the aggregator knows that the gid has not yet
   // been issued,
-  // - throw (CANISTER_REJECT) if the aggregator does not know about this gid
-  //
-  // The CANISTER_REJECT happens in the following cases:
-  // - the aggregator does not know whether the gid was issued by itself (before
-  // an upgrade) or by a different aggregator,
-  // - the aggregator has issued the gid but has lost track of it (through an
-  // upgrade)
-  //
-  // The CANISTER_REJECT can happen after a reinstall, an update that did not
-  // preserve state, or after the ledger reset stops the current stream due to a
-  // timeout. It means that the caller has to poll the ledger instead.
-  txStatus : (GlobalId) -> (GidStatus) query;
-};
+  // - trap (CANISTER_ERROR) if the aggregator does not have a current stream id
+  txStatus : (vec GlobalId) -> (vec GidStatus) query;
 
+  // Return the status of the current stream(s). 
+  //
+  // In the current implementation the aggregator has at most one stream open at
+  // any point in time. However, the interface is designed to support multiple
+  // streams in case they are needed in the future.
+  //
+  // The aggregator keeps a list of all streams that it has used in the past.
+  // If the aggregator knows that a certain stream has been closed by the ledger
+  // then, but only then, can it prune the stream from the list. This list is
+  // returned by this function.
+  // 
+  // In the current implementation the aggregator only receives a new stream id
+  // when the previous one (in fact all previous ones) have been closed by the
+  // ledger. Hence, the returned list has at most one element.
+  // 
+  // After first install or re-install the aggregator traps on this function
+  // (returns CANISTER_ERROR). The aggregator needs to communciate with the
+  // ledger at least once before it can guarantee correctness of the returned
+  // list.
+  streamStatus : () -> (vec StreamStatus) query; 
+
+};
+  
 service : () -> AggregatorIngressAPI;

@@ -32,7 +32,7 @@ Going through an aggregator unavoidably introduces latency for transactions subm
 The protocol is designed to keep the latency for frontends as small as possible
 given the extra inter-canister hop.
 
-### Protection against unsolicited 
+### Protection against unsolicited deposits 
 
 Users have to allow incoming transfers into their accounts.
 This is done to avoid regulatory problems with tainted coins and unwanted airdrops.
@@ -40,7 +40,7 @@ It also avoids security problems resulting from a poisened transaction history o
 
 ### Payment flows
 
-Multiple payment flows such as push, pull, approve-transfer and allowances are natively supported through the concept of virtual accounts.
+Multiple payment flows such as push, pull, approve-transfer and allowances are natively supported through the single concept of virtual accounts.
 This simplifies the programming of services that deal with hpl tokens.
 
 ### Standard-compliance
@@ -50,7 +50,7 @@ It is therefore unfortunately not possible to comply with ICRC-1 or other standa
 For example, in the case of ICRC-1, there are two limiting factors that make it impossible:
 
 * The ICRC-1 API is specifically designed for a single token per canister.
-* When submitting a transaction, the ICRC-1 API requires an immediate response about the success of the transfer. This is incompatible with an additional inter-canister hop that works in batches.
+* When submitting a transaction, the ICRC-1 API requires the call response to carry information about the transfer's success or failure. This is incompatible with an additional inter-canister hop that works in batches.
 
 ## Account model
 
@@ -92,7 +92,7 @@ The only principal that can access `V` in a transfer,
 either as sending or receiving account,
 is `B`.
 Even `A` cannot access `V` in a transfer.
-When a transfer is executed then any balance change affecting `V` is applied to X.
+When a transfer is executed then any balance change affecting `V` is applied to `X`.
 
 The access principal of a virtual account is permanent, i.e. cannot be changed.
 
@@ -103,8 +103,8 @@ Virtual accounts are referenced by their owner and a virtual account id which is
 The virtual account ids are consecutive numbers `0, 1, 2, ...`.
 Virtual accounts need to be openend explicitly by their owner.
 
-A virtual account can be viewed as a "gated port" to a physical account.
-It has a port id (the virtual account id) and is gated by the access principal.
+A virtual account can be viewed as a "gated port" to a physical account:
+it has a port id (the virtual account id) and is gated by the access principal.
 
 Transfers created by a principal `A` can:
 * send from a physical account of `A` to another physical account of `A`
@@ -119,15 +119,15 @@ The balance of a virtual account `V` is independent of the balance in the backin
 It can be lower or higher.
 `V`'s balance can be freely set or adjusted up and down by the owner.
 
-When a transfer is executed involving `V` then the transfer's balance change is applied to `V`'s balance *and* to X's balance.
+When a transfer is executed involving `V` then the transfer's balance change is applied to `V`'s balance *and* to `X`'s balance.
 If the balance change is negative (i.e. the transfer is outgoing)
 then there must be sufficient balance in `V` *and* in `X` or the tranfer will fail.
 
-For incoming transfers `V`'s balance can be used to track the cumulative deposits made by the access principal `B`.
+For incoming transfers, `V`'s balance can be used to track the cumulative deposits made by the access principal `B`.
 
 For outgoing transfers `V`'s balance can be used as an allowance to `B` because `B` can withdraw only up to `V`'s balance even if `X`'s balance is higher.
 
-Thus virtual accounts as a concept have similarities with allowance and approve-transfer methods. 
+Thus, virtual accounts as a concept have similarities with allowance and approve-transfer methods. 
 
 ### Transfers
 
@@ -146,10 +146,12 @@ The amount directive `max` transfers the entire balance of the sending account a
 
 The memo can hold arbitrary meta data and is irrelevant for the execution of the transfer. 
 
+In the future, additional optional fields will be added to specify a fee mode.
+
 ## Transaction API for external users
 
 The high-performance ledger (hpl) is a set of canisters spread over various subnets.
-We describe here how external users interact with this set of canisters collectively called the "hpl system" or simply the "hpl".
+We describe here how external users interact with this set of canisters collectively called the _hpl system_ or simply the _hpl_.
 By external users we mean all clients who communicate with the IC via ingress messages such as wallet frontends, dfx, etc.
 This is not how other canisters interact with the hpl. 
 
@@ -160,10 +162,10 @@ The transaction will not execute right away during the submission call.
 Instead, the transaction will only get queued inside the aggregator.
 It will later be forwarded to the ledger in a batch together with other transactions
 and will only then get executed in the ledger.
-Forwarding to the ledger happens at regular intervals triggered by the heartbeat.
+Forwarding to the ledger happens at regular intervals triggered by the aggregator's heartbeat.
 
 During submission the transaction undergoes only superficial checks.
-It is not enough to say whether the transaction will succeed or not.
+They are not enough to determine whether the transaction will succeed or not.
 If the superficial checks pass then the aggregator returns a transaction id called *global id* (short *gid*).
 The user uses the gid to track the status and final result of the transaction via query calls.
 Depending on the progress made, the user has to query the aggregator or the ledger, 
@@ -198,30 +200,35 @@ A gid can only be accepted by the ledger when its stream is open (at the ledger)
 
 A gid at the ledger can have the following states:
 
-* _processed_ : has been received, all received transactions are immediately processed
-* _awaited_ : its stream is open has not been received yet  
-* *dropped* : has not been received and its stream has been closed
-* *invalid* : does not belong to a stream that has ever been opened
+* _processed_ : has been received (all received transactions are immediately processed)
+* _awaited_ : has not been received yet but its stream is open 
+* _dropped_ : has not been received and its stream has been closed
+* _invalid_ : does not belong to a stream that has ever been opened
 
 We say a gid is _settled_ if it is either processed or dropped. 
 
 The status of a transaction as per its gid can be queried via the `txStatus(gid)` query function.
-It returns one of the following states or traps:
+It returns one of the following states or throws:
 
 |State|Description|
 |---|---|
 |`awaited`|The transaction has not yet been received from the aggregator but can still come.|
-|`processed`|The transaction has been processed.|
+|`processed:result`|The transaction has been processed.|
 |`dropped`|The transaction has not been processed and cannot be processed anymore.|
-|`CANISTER_ERROR` (trap)|The gid does not belong to any previously opened stream.|
+|`CANISTER_REJECT` (throw)|The gid does not belong to any previously opened stream.|
 
-The status `processed` does not yet say anything about the result of the transaction.
-The result is a different data point and can be `success` or `failure`.
+The status `processed` includes the result of the transaction which can be `success` or `failure`.
+The `failure` case contains information about the error that errors.
+The `success` case contains information about the execution result of the transactions.
+For example, if it is was a `max` transfer then the `success` case contains the amount that was transferred.
 
 The status `awaited` does not necessarily mean that the gid has actually been issued by the aggregator because the ledger does not know that information.
 It may also mean that the aggregator can issue the gid in the future.
 
 #### Transition diagram
+
+This is the transition diagram for valid gids:
+
 ```mermaid
 flowchart TD
 W[awaited] --> P[processed]
@@ -249,18 +256,21 @@ It returns one of the following states or traps:
 |---|---|
 |`queued:n`|The gid is in the queue and the distance to the queue head is `n`.|
 |`pending`|The gid has been forwarded to the ledger but the aggregator does not know if the batch has been delivered. If the batch cannot be delivered then it will be retried.|
-|`other`|The gid has either been settled or was issued by a different aggregator.|
-|`CANISTER_REJECT` (throw)|The gid is either pending, settled or was issued by a different aggregator. This happens when the aggregator does not have a current stream _and_ does not know whether the previous stream was already closed by the ledger or not (e.g. after first install or after an uninstall-reinstall cycle).|
-|`CANISTER_ERROR` (trap)|The gid belongs to the current stream but has not yet been issued.|
+|`other:time`|The gid has either been settled or was issued by a different aggregator and the last timestamp received from the ledger is `time`.|
+|`CANISTER_REJECT` (throw)|The gid belongs to the current stream but has not yet been issued.|
+|`CANISTER_ERROR` (trap)|The aggregator does not have a current stream id.|
 
-By a _fresh install_ we mean the state after installation or after an uninstall-reinstall cycle.
+When the aggregator does not have a current stream id then it often also does not know whether the previous stream id was closed or not.
+This happens for example after a fresh install before the aggregator has communicated with the ledger.
+In this case, the only safe response is to trap because the aggregator cannot distinguish between pending and settled.
+
+Note: By a _fresh install_ we mean the state after first installation or after an uninstall-reinstall cycle.
 The state after a stop-upgrade cycle is not called a fresh install.
-As a rule, one should never upgrade a canister without first stopping it, so that scenario is not considered.
+An aggregator can go through a stop-upgrade cycle and maintain its stream id. 
 
-Examples:
-* After a fresh install and before the aggregator receives its stream id from the ledger the response is `CANISTER_REJECT`.
-  This is because the aggregator does not know whether it previously had a stream or not and, if it did, whether that stream is still open at the ledger. Hence it cannot return `other`.
-* After having received a stream id for the first time the response is never `CANISTER_REJECT`. This is true across a stop-upgrade cycle. It is also true after having received notice of a closed stream and while waiting for the new stream id.
+Note: The case `other` for practical purposes means `settled`. This is because in practice a client will query the correct aggregator, the one which has issued the gid. And in this case `other` is equivalent to `settled`.
+
+Note: The ledger time is useful for clients who query the ledger after having received the `other:time` response. It is possible that the subsequent ledger query is routed to a node that has fallen behind and produces a query response from before the transaction was processed. Knowing the ledger time the client can determine whether the node was up-to-date or not.
 
 #### Standard transitions
 
@@ -284,7 +294,7 @@ Q --> O
 #### Exceptional transitions
 ```mermaid
 flowchart TD
-queued --> X["CANISTER_REJECT"]
+queued --> X["CANISTER_ERROR"]
 pending --> X
 other --> X
 X --> O2[other]
@@ -292,17 +302,19 @@ X --> O2[other]
 
 |Transition|Description|
 |---|---|
-|any -> `CANISTER_REJECT`|Reinstall|
-|`CANISTER_REJECT` -> `other`|New stream is opened.|
+|any -> `CANISTER_ERROR`|Uninstall-reinstall cycle.|
+|`CANISTER_ERROR` -> `other`|New stream is opened.|
 
-Note: The second transition means that all _old_ gids return `other` after a new stream is opened. 
+Note: The second transition means that all old gids return `other` after a new stream is opened.
+The reason is the behavior of the ledger. 
+When the aggregator receives a new stream from the ledger then it knows that the ledger has closed all its old stream ids.
 
 ### Client flow to track transaction status
 
 Suppose the client (frontend) has submitted a transaction to an aggregator and received a gid.
 Now it wants to track the transaction status and report progress to the user.
 This continues until the ledger returns a status of `processed` or `dropped`.
-When that happens the ledger will also returns the transaction result (success or failure).
+When that happens the ledger will also return the transaction result (success or failure).
 
 #### Protocol 1
 
@@ -310,8 +322,7 @@ The client polls the aggregator while the status is either queued or pending.
 While the status is queued the polling interval can be adjusted based on the distance n from the head of the queue.
 The further away the slower we need to poll.
 When the polling stops then the status is `other`.
-Now the client does a single query to the ledger and receives either `processed` or `dropped`.
-In case of `processed` the ledger also returns the transaction result (success or failure).
+Now the client does a single query to the ledger and receives either `processed:result` or `dropped`.
 
 ```mermaid
 flowchart TD
@@ -319,7 +330,7 @@ flowchart TD
 
     %% Aggregator unbounded loop %%
     A --> R{result?}
-    R -->|queued : n<br>pending<br>CANISTER_REJECT| A 
+    R -->|queued : n<br>pending<br>CANISTER_ERROR| A 
     R -->|other| L
 
     %% Ledger single query %%
@@ -333,10 +344,10 @@ flowchart TD
 Note: If we have received `other` once for a gid from the aggregator that issued it then afterwards
 the ledger cannot return `awaited`.
 
-Proof: The state `other` can be reached only from `pending` or from `CANISTER_REJECT`.
+Proof: The state `other` can be reached only from `pending` or from `CANISTER_ERROR`.
 The transition `pending -> other` only happens if the transaction's batch was was processed,
 in which case the ledger returns `processed`.
-The transition `CANISTER_REJECT -> other` only happens if a new stream was opened,
+The transition `CANISTER_ERROR -> other` only happens if a new stream was opened,
 which means the old stream must have been closed,
 which means the gid is settled.
 
@@ -371,7 +382,7 @@ flowchart TD
 
     %% Aggregator unbounded loop %%
     A --> R{result?}
-    R -->|queued : n<br>CANISTER_REJECT| A 
+    R -->|queued : n<br>CANISTER_ERROR| A 
     R -->|other| L
     R -->|pending| L2
 
@@ -403,7 +414,7 @@ flowchart TD
 
     %% Aggregator unbounded loop %%
     A --> R{result?}
-    R -->|queued : n<br>CANISTER_REJECT| A 
+    R -->|queued : n<br>CANISTER_ERROR| A 
     R -->|other<br>pending| L2
 
     %% Ledger single query %%
@@ -414,18 +425,3 @@ flowchart TD
     R3 --> |awaited| L2
     R3 --> |awaited<br> >N times| A
 ```
-
-#### Variation
-
-The discussion above assumed that the client knows the aggregator which has generated the gid.
-If we do not know that then we have to start with one initial query to the ledger that will tell us the principal of the aggregator.
-
-```mermaid
-flowchart TD
-    L("query ledger.txStatus(gid)<br>(initial query)") --> R1{result?}
-    R1 -->|processed| P1[processed<br>with result]
-    R1 -->|dropped| D1[permanently<br>dropped]
-    R1 -->|awaited :<br>aggregator principal| A("1.<br>query aggregator.txStatus(gid)<br>(unbounded polling loop)")
-```
-
-The box at the bottom right is the starting point of the protocols above.
