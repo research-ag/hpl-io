@@ -1,0 +1,198 @@
+// An account is referenced by (owner, subid).
+// `owner` is a principal, `subid` a nat.
+type SubId = nat;
+
+// A virtual account is referenced by (owner, virid).
+// `owner` is a principal, `virid` a nat.
+type VirId = nat;
+
+// TxInput describes a transaction.
+// Currently there is only one transaction type, `ftTransfer`.
+// In the future new transaction types will be introduced.
+//
+// The information in TxInput can be seen as _instructions_ to carry out a
+// transaction rather than the transaction itself. When processed, the
+// instructions will lead to an actual transaction. A full description of the
+// resulting transaction can, in certain cases, require more information than
+// what was specified in the intructions.  For example, TxInput can specify a
+// `max` amount which will be translated to the real amount available only at
+// processing time.  As another example, the sender's principal is not in
+// TxInput because it is implicitly specified as the "caller" who submit the
+// TxInput. But it would of course be required in a complete description of the
+// transaction.
+type TxInput = variant { ftTransfer : FtTransfer };
+
+// FtTransfer describes a fungible token transfer from one account to another.
+// `from` is the sending account.
+// `to` is the receiving account.
+// `assetId` is the id of the token to be transferred.
+// `amount` is the number of tokens to be transferred.
+// Specifying `max` as `amount` transfers the entire available amount in the
+// sending account.
+// `memo` is a vector of blobs which can be used to attach metadata that is
+// relevant for the sender or receiver.
+//
+// Backward compatibility:
+// New fields can be added to the record in the future as long as they are
+// optional. Old client code will not specify the new field and it will be set to
+// null by Candid.
+// For example, we can later introduce an optional `nonce` field that can
+// be used to enforce idempotency if desired. The default is `null` which
+// means idempotency is not enforced.
+// As another example, we can later introduce an optional `fee` field that
+// can be used to select one from several fee modes if desired. The default
+// is `null` which means to use the ledger's default fee mode.
+type FtTransfer = record {
+  from : AccountRef;
+  to : AccountRef;
+  asset : AssetId;
+  amount : variant {
+    amount : nat;
+    max;
+  };
+  memo : vec blob;
+};
+type AssetId = nat;
+
+// The sending or receiving account can be an account, virtual account, or
+// the "mint".
+// `sub` specifies the account of the caller with the given SubId.
+// `vir` specifies the virtual account of the given owner principal with the
+// given VirId. The caller must have access to that virtual account or the
+// transfer will fail.
+// `mint` specifies the "mint" of the given asset id. Sending to `mint` burns
+// tokens. Sending from `mint` mints tokens. In both cases, the caller must be
+// the controller of the given asset id or the transfer will fail. Only the
+// controller can mint and burn tokens.
+//
+// Backward compatibility:
+// Since this is an input (i.e. argument), new variant cases can later be added.
+// Old client will simply never supply the new cases.
+type AccountRef = variant {
+  sub : SubId;
+  vir : record {
+    principal; // owner principal
+    VirId;
+  };
+  mint;
+};
+
+// Timestamp measured in nanoseconds since the beginning of the Unix epoch
+// We only need timestamps in the future, hence negative values are not allowed.
+type Time = nat64;
+
+// Transactions are assigned a globally unique id (gid) when they are submitted
+// to the aggregator. The global id is valid forever and will never be re-used
+// for a different transaction, even if the transaction fails in processing.
+type GlobalId = record { nat; nat };
+
+// See README.md for an explanation of the status states.
+//
+// We call this type `GidStatus` rather than `TxStatus` to emphasize that the
+// status is not dependent on the TxInput and that the status reveals no
+// information about the TxInput. This is different from querying the ledger for
+// transaction status. The ledger can return success or failure which depends on
+// the actual TxInput, not only the gid. When we query the aggregator for
+// GidStatus we learn about the progress of communication between aggregator and
+// ledger which is only a function of gid, not the TxInput.
+//
+// Backwards compatibility:
+// In the future, additional data can be returned in each of the variant cases
+// by adding field to the records.
+// In the case `queued`, for example, we can add a second nat which represents
+// the distance from the head counted in the unit "weight" (bytes). This
+// provides additional information to the client and would allowe the client to
+// better predict when the transaction will be forwarded.
+// As another example, we can add additional information to the `other`.
+// Often the aggregator has additional information on the gid.
+// It may know, for example, if the transaction is processed or dropped.
+// Newer clients can then use that information.
+type GidStatus = variant {
+  queued : record { nat };
+  pending : record {};
+  other : record { Time; variant { settled; settledIfIssuedHere } };
+};
+
+// API
+
+service : () -> {
+  // UPDATES
+
+  // `submitAndExecute` submits transactions to the aggregator. The aggregator
+  // enqueues transactions and issues a global id for each of them.
+  //
+  // `submitAndExecute` will trap in the following cases:
+  // * A `SubId`, `VirId` or `assetId` is larger than 64 bits
+  // * `amount` is larger than 128 bits
+  // * The principal in `vir` is longer than 29 bytes or otherwise invalid
+  // * The memo vector is too long (too many entries)
+  // * An individual memo entry is too long (too many bytes)
+  // * The combined length of all memos is too large (too many bytes)
+  // * The internal queue is full (back pressure)
+  // The trap message will contain the reason in descriptive text format.
+  //
+  // `submitAndExecute` is subject to ingress message inspection.  Any call that
+  // would trap for any of the above reasons will be rejected during inspection.
+  // This will lead to an http 500 error. The caller will not be able to learn
+  // the specific reason why the call failed.
+  //
+  // The aggregator does not check if the accounts exist, if the caller has
+  // access to the accounts or if there are sufficient funds. Those kind of
+  // errors will only be caught later during processing in the ledger.
+  //
+  // Backwards compatibility: In the future, new transaction types can be
+  // introduced as new variant cases in the `TxInput` argument. New return
+  // values can be added as positional values after the last one.
+  //
+  // If the structure of GlobalId changes then it is advisable to introduce a
+  // new function replacing this `submitAndExecute`.
+  submitAndExecute : (vec TxInput) -> (vec GlobalId);
+
+  // QUERIES
+
+  // `txStatus` returns the current status of a gid.
+  //
+  // See README.md for the typical process to track a transaction after
+  // submission to the aggregator.
+  //
+  // The function traps if the nats in global id are larger than 64 bits.
+  //
+  // The function traps if the stream id inside the gid is the current one but
+  // the stream position lies in the future. Because then the aggregator knows
+  // for sure that the gid was not yet issued.
+  //
+  // The function throws if the aggregator has no current stream id, i.e. if
+  // it is in the process of obtaining one.
+  // This can happen after a reinstall, an update the did not preserve state,
+  // or after the ledger reset stops the current stream due to a timeout.
+  //
+  // Backwards compatibility:
+  //
+  // New fields can be added to the returned record.  Old code will not see
+  // those fields.
+  //
+  // If the internal structure of GlobalId changes then it is advisable to
+  // introduce a new function replacing this `txStatus`.
+  //
+  // New cases can be added to the GidStatus variant because it is
+  // wrapped in an `opt`. Old code that does not know the new case will see the
+  // whole status as `null`.
+  //
+  // For example, if we want to add the ability to cancel transactions that are
+  // already in the queue then we can add a case `canceled` to the
+  // GidStatus variant. An old frontend that is not aware of the
+  // case `canceled` would see `null` as the status if it queries a transaction
+  // that is in that state.  However, this is not a problem because a frontend
+  // queries only its own transactions. And if the frontend does not know about
+  // the cancelation feature then none of its transactions will be in that
+  // state.
+  txStatus : (vec GlobalId) -> (vec GidStatus) query;
+
+  streamStatus: () ->
+    (vec record {
+      id: nat;
+      received: nat;
+      sent: nat;
+      length: nat;
+    }) query;
+};

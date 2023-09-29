@@ -9,3 +9,12 @@
 
 # dfx temporary files
 .dfx/
+
+# generated files
+client/candid
+
+# frontend code
+node_modules/
+dist/
+
+canister_ids.json

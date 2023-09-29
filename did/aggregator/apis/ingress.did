@@ -78,6 +78,7 @@ type GlobalId = record { nat; nat };
 // which can be used as an indication for the remaining time before it gets
 // forwarded.
 //
+//
 // State `other` contains the last timestamp received from the ledger. If the
 // client subsequently queries the ledger for the same gid then it should ignore
 // any response that is older than this timestamp.

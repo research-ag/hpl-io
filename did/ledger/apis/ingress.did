@@ -170,7 +170,7 @@ type LedgerIngressAPI = service {
   //
   // Return value is:
   // - throw (CANISTER_REJECT) if caller is unknown or any of the selected
-  // subIds is unknown
+  // SubIds is unknown
   // - a vector of pairs (account id, account type)
   //
   // Note: The IdSelector can be crafted in a way the the retuned vector contain
