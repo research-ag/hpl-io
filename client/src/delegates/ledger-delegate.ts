@@ -13,6 +13,7 @@ import { idlFactory as ledgerIDLFactory } from '../../candid/ledger.idl';
 import { Delegate } from './delegate';
 import { unpackVariant } from '../utils/unpack-variant';
 import { accountInfoCast, JsAccountInfo, JsAccountState, ledgerStateCast } from './types';
+import { unpackRes } from '../utils/unpack-res.util';
 
 export type TxResult = any; // TODO type when implemented
 export type TxLedStatus =
@@ -115,6 +116,10 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
     return (await this.txStatus([id]))[0];
   }
 
+  async nFtAssets(): Promise<bigint> {
+    return this.query((await this.service).nFtAssets);
+  }
+
   async ftInfo(
     selector: IdSelector,
   ): Promise<Array<[AssetId, { controller: Principal; decimals: number; description: string }]>> {
@@ -124,6 +129,14 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
   async aggregators(): Promise<{ principal: Principal; priority: number }[]> {
     const res = await this.query((await this.service).aggregators);
     return res.map(([principal, priority]) => ({ principal, priority: Number(priority) }));
+  }
+
+  async aggregatorPrincipal(streamId: bigint): Promise<Principal> {
+    return unpackRes(this.query((await this.service).aggregatorPrincipal, streamId));
+  }
+
+  async nStreams(): Promise<bigint> {
+    return this.query((await this.service).nStreams);
   }
 
   async streamStatus(selector: IdSelector): Promise<Array<[bigint, StreamStatus]>> {

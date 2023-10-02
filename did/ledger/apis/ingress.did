@@ -426,6 +426,12 @@ type LedgerIngressAPI = service {
   // load balancing between aggregators.
   aggregators : () -> (vec record { principal; nat }) query;
 
+  // Return the principal of aggregator, which owns the provided stream id
+  aggregatorPrincipal : (nat) -> (variant { ok : principal; err : variant { NotFound } }) query;
+
+  // Return the total number of registered streams;
+  nStreams : () -> (nat) query;
+
   // Return the status of one or more streams given by their stream ids.
   //
   // Return value is:

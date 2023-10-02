@@ -14,3 +14,13 @@ export const bigIntPrincipalReplacer = (key: string, value: any): any => {
 export const zip: <T, K>(a: T[], b: K[]) => [T, K][] = (a, b) => {
   return Array(Math.max(a.length, b.length)).fill(null).map((_, i) => [a[i], b[i]]);
 }
+
+export const copyToClipboard = (textToCopy: string) => {
+  // Create a temporary input element to copy text to the clipboard
+  const tempInput = document.createElement('input');
+  tempInput.value = textToCopy;
+  document.body.appendChild(tempInput);
+  tempInput.select();
+  document.execCommand('copy');
+  document.body.removeChild(tempInput);
+};
