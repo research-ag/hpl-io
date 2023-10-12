@@ -38,7 +38,7 @@ const AccountRefSelector: React.FC<AccountRefSelectorProps> = ({ onChange }) => 
         break;
     }
     onChange(ref);
-  }, [accountType]);
+  }, [accountType, accountId, accountOwner]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>

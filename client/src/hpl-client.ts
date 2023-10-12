@@ -7,6 +7,7 @@ import { finalize, Observable, Subject, takeWhile } from 'rxjs';
 import { Actor, AnonymousIdentity, Identity, RequestId } from '@dfinity/agent';
 import { AccountRef, TxInput } from '../candid/aggregator';
 import { sleep } from './utils/sleep.util';
+import { HplError } from './hpl-error';
 
 export type SimpleTransferStatusKey = 'queued' | 'forwarding' | 'forwarded' | 'processed';
 
@@ -178,11 +179,28 @@ export class HPLClient {
           }
           return false;
         };
+        // sometimes it is possible that txStatus will be answered by fallen-behind replica
+        // in this case we can catch not possible otherwise error "Not yet issued".
+        // we ignore up to 10 such errors
+        let notYetIssuedCounter = 0;
         pollingLoop: while (true) {
           switch (pollingState) {
             case 'aggregator':
               await sleep(250);
-              subj.next(await pollAggregatorRoutine());
+              try {
+                subj.next(await pollAggregatorRoutine());
+              } catch (e) {
+                if (
+                  notYetIssuedCounter < 10 &&
+                  e instanceof HplError &&
+                  e.errorKey == 'CanisterReject' &&
+                  e.errorPayload == 'Not yet issued'
+                ) {
+                  notYetIssuedCounter++;
+                } else {
+                  throw e;
+                }
+              }
               break;
             case 'both':
               await sleep(250);

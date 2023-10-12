@@ -24,19 +24,19 @@ let localStorageUnfinishedItems: [number, TxHistoryEntry][] = [];
 
 const loadUnfinishedTxsFromLocalStorage = () => {
   localStorageUnfinishedItems = new Array(localStorage.length)
-      .fill(null)
-      .map((_, i) => localStorage.key(i)!)
-      .filter(k => k.startsWith(TX_HISTORY_KEY))
-      .map(k => {
-        let obj = null;
-        try {
-          obj = JSON.parse(localStorage.getItem(k)!, bigIntReviver);
-        } catch (err) {
-          // pass
-        }
-        return [+k.substring(TX_HISTORY_KEY.length), obj] as [number, TxHistoryEntry];
-      })
-      .filter(([k, v]) => v.lastSeenStatus && v.lastSeenStatus !== 'processed');
+    .fill(null)
+    .map((_, i) => localStorage.key(i)!)
+    .filter(k => k.startsWith(TX_HISTORY_KEY))
+    .map(k => {
+      let obj = null;
+      try {
+        obj = JSON.parse(localStorage.getItem(k)!, bigIntReviver);
+      } catch (err) {
+        // pass
+      }
+      return [+k.substring(TX_HISTORY_KEY.length), obj] as [number, TxHistoryEntry];
+    })
+    .filter(([k, v]) => v.lastSeenStatus && v.lastSeenStatus !== 'processed');
 };
 
 loadUnfinishedTxsFromLocalStorage();
@@ -219,13 +219,13 @@ const App: React.FC = () => {
 
   const onPickupTxClicked = async (localId: number, historyEntry: TxHistoryEntry) => {
     await runOrPickupSimpleTransfer(
-        localId,
-        historyEntry.txArgs,
-        client,
-        appendLogEntry,
-        historyEntry.aggregatorPrincipal,
-        historyEntry.submitRequestId,
-        historyEntry.txId && [BigInt(historyEntry.txId[0]), BigInt(historyEntry.txId[1])],
+      localId,
+      historyEntry.txArgs,
+      client,
+      appendLogEntry,
+      historyEntry.aggregatorPrincipal,
+      historyEntry.submitRequestId,
+      historyEntry.txId && [BigInt(historyEntry.txId[0]), BigInt(historyEntry.txId[1])],
     );
     loadUnfinishedTxsFromLocalStorage();
   };
@@ -262,24 +262,24 @@ const App: React.FC = () => {
     {
       label: 'list all',
       component: (
-          <div className='query-input'>
-            <button onClick={wrapCall(onQueryAggregatorsClicked)}>Query</button>
-          </div>
+        <div className='query-input'>
+          <button onClick={wrapCall(onQueryAggregatorsClicked)}>Query</button>
+        </div>
       ),
     },
     {
       label: 'query stream status',
       component: (
-          <div className='query-input'>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span><b>Aggregator principal:</b></span>
-              <input type='text' placeholder='Aggregator principal' value={aggregatorPrincipal}
-                     onChange={(event) => {
-                       setAggregatorPrincipal(event.target.value);
-                     }} />
-            </div>
-            <button onClick={wrapCall(onQueryAggregatorStreamStatusClicked)}>Query</button>
+        <div className='query-input'>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span><b>Aggregator principal:</b></span>
+            <input type='text' placeholder='Aggregator principal' value={aggregatorPrincipal}
+                   onChange={(event) => {
+                     setAggregatorPrincipal(event.target.value);
+                   }} />
           </div>
+          <button onClick={wrapCall(onQueryAggregatorStreamStatusClicked)}>Query</button>
+        </div>
       ),
     },
     'divider',
@@ -287,40 +287,40 @@ const App: React.FC = () => {
     {
       label: 'create',
       component: (
-          <div className='query-input'>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span><b>Decimals:</b></span>
-              <input type='number' placeholder='Decimals' value={newFtDecimals}
-                     onChange={(event) => setNewFtDecimals(Number(event.target.value))} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span><b>Description:</b></span>
-              <input placeholder='Description' value={newFtDescription}
-                     onChange={(event) => setNewFtDescription(event.target.value)} />
-            </div>
-            <button onClick={wrapCall(onCreateAssetClicked)}>Register FT Asset</button>
+        <div className='query-input'>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span><b>Decimals:</b></span>
+            <input type='number' placeholder='Decimals' value={newFtDecimals}
+                   onChange={(event) => setNewFtDecimals(Number(event.target.value))} />
           </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span><b>Description:</b></span>
+            <input placeholder='Description' value={newFtDescription}
+                   onChange={(event) => setNewFtDescription(event.target.value)} />
+          </div>
+          <button onClick={wrapCall(onCreateAssetClicked)}>Register FT Asset</button>
+        </div>
       ),
     },
     {
       label: 'total number',
       component: (
-          <div className='query-input'>
-            <button onClick={wrapCall(async () =>
-                appendLogEntry(`Total number of fungible tokens: ${await client.ledger.nFtAssets()}`))
-            }>Query
-            </button>
-          </div>
+        <div className='query-input'>
+          <button onClick={wrapCall(async () =>
+            appendLogEntry(`Total number of fungible tokens: ${await client.ledger.nFtAssets()}`))
+          }>Query
+          </button>
+        </div>
       ),
     },
     {
       label: 'query',
       component: (
-          <div className='query-input'>
-            <IdSelectorInput value={queryAssetsSelector} onOutputChange={setQueryAssetsSelector} />
-            <button onClick={wrapCall(onQueryAssetSupplyClicked)}>Query Supply</button>
-            <button onClick={wrapCall(onQueryAssetClicked)}>Query Info</button>
-          </div>
+        <div className='query-input'>
+          <IdSelectorInput value={queryAssetsSelector} onOutputChange={setQueryAssetsSelector} />
+          <button onClick={wrapCall(onQueryAssetSupplyClicked)}>Query Supply</button>
+          <button onClick={wrapCall(onQueryAssetClicked)}>Query Info</button>
+        </div>
       ),
     },
     'divider',
@@ -332,22 +332,22 @@ const App: React.FC = () => {
     {
       label: 'total number',
       component: (
-          <div className='query-input'>
-            <button onClick={wrapCall(async () =>
-                appendLogEntry(`Total number of my subaccounts: ${await client.ledger.nAccounts()}`))
-            }>Query
-            </button>
-          </div>
+        <div className='query-input'>
+          <button onClick={wrapCall(async () =>
+            appendLogEntry(`Total number of my subaccounts: ${await client.ledger.nAccounts()}`))
+          }>Query
+          </button>
+        </div>
       ),
     },
     {
       label: 'query',
       component: (
-          <div className='query-input'>
-            <IdSelectorInput value={queryAccountsSelector} onOutputChange={setQueryAccountsSelector} />
-            <button onClick={() => wrapCall(onQuerySubaccountStateClicked)('My ', client.ledger)}>Query State</button>
-            <button onClick={() => wrapCall(onQuerySubaccountInfoClicked)('My ', client.ledger)}>Query Info</button>
-          </div>
+        <div className='query-input'>
+          <IdSelectorInput value={queryAccountsSelector} onOutputChange={setQueryAccountsSelector} />
+          <button onClick={() => wrapCall(onQuerySubaccountStateClicked)('My ', client.ledger)}>Query State</button>
+          <button onClick={() => wrapCall(onQuerySubaccountInfoClicked)('My ', client.ledger)}>Query Info</button>
+        </div>
       ),
     },
     'divider',
@@ -363,33 +363,33 @@ const App: React.FC = () => {
     {
       label: 'delete',
       component: (
-          <div className='query-input'>
-            <input type='number' placeholder='Virtual Account ID' value={queryAccountId}
-                   onChange={(event) => {
-                     setQueryAccountId(Number(event.target.value));
-                   }} />
-            <button onClick={wrapCall(onDeleteVirtualAccountClicked)}>Delete</button>
-          </div>
+        <div className='query-input'>
+          <input type='number' placeholder='Virtual Account ID' value={queryAccountId}
+                 onChange={(event) => {
+                   setQueryAccountId(Number(event.target.value));
+                 }} />
+          <button onClick={wrapCall(onDeleteVirtualAccountClicked)}>Delete</button>
+        </div>
       ),
     },
     {
       label: 'total number',
       component: (
-          <div className='query-input'>
-            <button
-                onClick={wrapCall(async () => appendLogEntry(`Virtual Accounts amount: ${await client.ledger.nVirtualAccounts()}`))}>Query
-            </button>
-          </div>
+        <div className='query-input'>
+          <button
+            onClick={wrapCall(async () => appendLogEntry(`Virtual Accounts amount: ${await client.ledger.nVirtualAccounts()}`))}>Query
+          </button>
+        </div>
       ),
     },
     {
       label: 'query',
       component: (
-          <div className='query-input'>
-            <IdSelectorInput value={queryVirtualsSelector} onOutputChange={setQueryVirtualsSelector} />
-            <button onClick={wrapCall(onQueryVirtualAccountStateClicked)}>Query State</button>
-            <button onClick={wrapCall(onQueryVirtualAccountInfoClicked)}>Query Info</button>
-          </div>
+        <div className='query-input'>
+          <IdSelectorInput value={queryVirtualsSelector} onOutputChange={setQueryVirtualsSelector} />
+          <button onClick={wrapCall(onQueryVirtualAccountStateClicked)}>Query State</button>
+          <button onClick={wrapCall(onQueryVirtualAccountInfoClicked)}>Query Info</button>
+        </div>
       ),
     },
     'divider',
@@ -397,17 +397,17 @@ const App: React.FC = () => {
     {
       label: 'query',
       component: (
-          <div className='query-input'>
-            <input type='text' placeholder='Owner principal' value={remotePrincipal}
-                   onChange={(event) => {
-                     setRemotePrincipal(event.target.value);
-                   }} />
-            <input type='number' placeholder='Account ID' value={queryAccountId}
-                   onChange={(event) => {
-                     setQueryAccountId(Number(event.target.value));
-                   }} />
-            <button onClick={wrapCall(onQueryRemoteVirtualAccountStateClicked)}>Query</button>
-          </div>
+        <div className='query-input'>
+          <input type='text' placeholder='Owner principal' value={remotePrincipal}
+                 onChange={(event) => {
+                   setRemotePrincipal(event.target.value);
+                 }} />
+          <input type='number' placeholder='Account ID' value={queryAccountId}
+                 onChange={(event) => {
+                   setQueryAccountId(Number(event.target.value));
+                 }} />
+          <button onClick={wrapCall(onQueryRemoteVirtualAccountStateClicked)}>Query</button>
+        </div>
       ),
     },
     'divider',
@@ -421,26 +421,26 @@ const App: React.FC = () => {
     {
       label: 'total number',
       component: (
-          <div className='query-input'>
-            <button onClick={async () => {
-              try {
-                appendLogEntry(`Total number of admin subaccounts: ${await client.admin.nAccounts()}`);
-              } catch (err) {
-                appendLogEntry(`Error: ${err}`);
-              }
-            }}>Query
-            </button>
-          </div>
+        <div className='query-input'>
+          <button onClick={async () => {
+            try {
+              appendLogEntry(`Total number of admin subaccounts: ${await client.admin.nAccounts()}`);
+            } catch (err) {
+              appendLogEntry(`Error: ${err}`);
+            }
+          }}>Query
+          </button>
+        </div>
       ),
     },
     {
       label: 'query',
       component: (
-          <div className='query-input'>
-            <IdSelectorInput value={queryAccountsSelector} onOutputChange={setQueryAccountsSelector} />
-            <button onClick={() => wrapCall(onQuerySubaccountStateClicked)('Ledger ', client.admin)}>Query State</button>
-            <button onClick={() => wrapCall(onQuerySubaccountInfoClicked)('Ledger ', client.admin)}>Query Info</button>
-          </div>
+        <div className='query-input'>
+          <IdSelectorInput value={queryAccountsSelector} onOutputChange={setQueryAccountsSelector} />
+          <button onClick={() => wrapCall(onQuerySubaccountStateClicked)('Ledger ', client.admin)}>Query State</button>
+          <button onClick={() => wrapCall(onQuerySubaccountInfoClicked)('Ledger ', client.admin)}>Query Info</button>
+        </div>
       ),
     },
     'divider',
@@ -448,28 +448,28 @@ const App: React.FC = () => {
     {
       label: 'total number',
       component: (
-          <div className='query-input'>
-            <button onClick={async () => {
-              try {
-                appendLogEntry(`Total number of streams: ${await client.ledger.nStreams()}`);
-              } catch (err) {
-                appendLogEntry(`Error: ${err}`);
-              }
-            }}>Query
-            </button>
-          </div>
+        <div className='query-input'>
+          <button onClick={async () => {
+            try {
+              appendLogEntry(`Total number of streams: ${await client.ledger.nStreams()}`);
+            } catch (err) {
+              appendLogEntry(`Error: ${err}`);
+            }
+          }}>Query
+          </button>
+        </div>
       ),
     },
     {
       label: 'query',
       component: (
-          <div className='query-input'>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span><b>Stream id-s:</b></span>
-              <IdSelectorInput value={queryStreamsSelector} onOutputChange={setQueryStreamsSelector} />
-            </div>
-            <button onClick={wrapCall(onQueryLedgerStreamsClicked)}>Query</button>
+        <div className='query-input'>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span><b>Stream id-s:</b></span>
+            <IdSelectorInput value={queryStreamsSelector} onOutputChange={setQueryStreamsSelector} />
           </div>
+          <button onClick={wrapCall(onQueryLedgerStreamsClicked)}>Query</button>
+        </div>
       ),
     },
     'divider',
@@ -481,63 +481,63 @@ const App: React.FC = () => {
     {
       label: 'query aggregator',
       component: (
-          <div className='query-input'>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span><b>Aggregator principal:</b></span>
-              <div>
-                <input type='checkbox' id='autoDetectAggregatorCheckbox' checked={aggregatorPrincipalAutoDetect}
-                       onClick={() => setAggregatorPrincipalAutoDetect(!aggregatorPrincipalAutoDetect)} />
-                <label htmlFor='autoDetectAggregatorCheckbox'>Auto-detect</label>
-              </div>
-              {!aggregatorPrincipalAutoDetect &&
-                  <input type='text' placeholder='Aggregator principal' value={aggregatorPrincipal}
-                         onChange={(event) => {
-                           setAggregatorPrincipal(event.target.value);
-                         }} />}
+        <div className='query-input'>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span><b>Aggregator principal:</b></span>
+            <div>
+              <input type='checkbox' id='autoDetectAggregatorCheckbox' checked={aggregatorPrincipalAutoDetect}
+                     onClick={() => setAggregatorPrincipalAutoDetect(!aggregatorPrincipalAutoDetect)} />
+              <label htmlFor='autoDetectAggregatorCheckbox'>Auto-detect</label>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span><b>Global id (0):</b></span>
-              <input type='number' placeholder='Global id (0)' value={queryGlobalId0}
+            {!aggregatorPrincipalAutoDetect &&
+              <input type='text' placeholder='Aggregator principal' value={aggregatorPrincipal}
                      onChange={(event) => {
-                       setQueryGlobalId0(Number(event.target.value));
-                     }} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span><b>Global id (1):</b></span>
-              <input type='number' placeholder='Global id (1)' value={queryGlobalId1}
-                     onChange={(event) => {
-                       setQueryGlobalId1(Number(event.target.value));
-                     }} />
-            </div>
-            <button onClick={wrapCall(onQueryTxAggregatorClicked)}>Query</button>
+                       setAggregatorPrincipal(event.target.value);
+                     }} />}
           </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span><b>Global id (0):</b></span>
+            <input type='number' placeholder='Global id (0)' value={queryGlobalId0}
+                   onChange={(event) => {
+                     setQueryGlobalId0(Number(event.target.value));
+                   }} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span><b>Global id (1):</b></span>
+            <input type='number' placeholder='Global id (1)' value={queryGlobalId1}
+                   onChange={(event) => {
+                     setQueryGlobalId1(Number(event.target.value));
+                   }} />
+          </div>
+          <button onClick={wrapCall(onQueryTxAggregatorClicked)}>Query</button>
+        </div>
       ),
     },
     {
       label: 'query ledger',
       component: (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '1em' }}>
-            <GidSelectorInput onOutputChange={setQueryLedgerTxSelector} />
-            <button onClick={wrapCall(onQueryTxLedgerClicked)}>Query</button>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '1em' }}>
+          <GidSelectorInput onOutputChange={setQueryLedgerTxSelector} />
+          <button onClick={wrapCall(onQueryTxLedgerClicked)}>Query</button>
+        </div>
       ),
     },
     ...(localStorageUnfinishedItems.length > 0 ? ['divider' as any, { label: 'Local journal' }] : []),
     ...localStorageUnfinishedItems.map(([k, v]) => ({
       label: `Pickup "${v.lastSeenStatus}" TX (${k})`,
       component: (
-          <div
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '1rem', rowGap: '1rem' }}>
-            <h3>Last seen status object:</h3>
-            <span style={{
-              wordBreak: 'normal',
-              textAlign: 'left',
-              whiteSpace: 'break-spaces',
-            }}>{JSON.stringify(v, bigIntReplacer, '\t')}</span>
-            <button
-                onClick={() => onPickupTxClicked(k, v)}>{v.lastSeenStatus === 'pickAggregator' ? 'Re-submit' : 'Poll result'}</button>
-            <button onClick={() => onDeleteTxClicked(k)}>Delete from storage</button>
-          </div>
+        <div
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '1rem', rowGap: '1rem' }}>
+          <h3>Last seen status object:</h3>
+          <span style={{
+            wordBreak: 'normal',
+            textAlign: 'left',
+            whiteSpace: 'break-spaces',
+          }}>{JSON.stringify(v, bigIntReplacer, '\t')}</span>
+          <button
+            onClick={() => onPickupTxClicked(k, v)}>{v.lastSeenStatus === 'pickAggregator' ? 'Re-submit' : 'Poll result'}</button>
+          <button onClick={() => onDeleteTxClicked(k)}>Delete from storage</button>
+        </div>
       ),
     })),
   ];
@@ -634,63 +634,63 @@ const App: React.FC = () => {
   };
 
   return (
-      <div className='App'>
-        <div className='navigation-panel'>
-          <ul>
-            {navOptions.map((option, index) => (
-                option === 'divider'
-                    ? <div key={index} className='divider' />
-                    : (!!option.component ? <li
-                        key={index}
-                        className={selectedNavItem === index ? 'active' : ''}
-                        onClick={() => handleNavItemClick(index)}
-                    >
-                      {option.label}
-                    </li> : <h3 key={index}>{option.label}</h3>)
-            ))}
-          </ul>
+    <div className='App'>
+      <div className='navigation-panel'>
+        <ul>
+          {navOptions.map((option, index) => (
+            option === 'divider'
+              ? <div key={index} className='divider' />
+              : (!!option.component ? <li
+                key={index}
+                className={selectedNavItem === index ? 'active' : ''}
+                onClick={() => handleNavItemClick(index)}
+              >
+                {option.label}
+              </li> : <h3 key={index}>{option.label}</h3>)
+          ))}
+        </ul>
+      </div>
+      <div className='right-component'>
+        <div className='input-container'>
+          <h3>Ledger principal: </h3>
+          <input type='text' value={ledgerPrincipalInput} onChange={handleLedgerPrincipalInputChange} />
         </div>
-        <div className='right-component'>
-          <div className='input-container'>
-            <h3>Ledger principal: </h3>
-            <input type='text' value={ledgerPrincipalInput} onChange={handleLedgerPrincipalInputChange} />
+        <div
+          style={{ display: 'flex', flexDirection: 'column', rowGap: '1rem', padding: '1rem', alignItems: 'stretch' }}>
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}>
+            <span>II login:</span>
+            {isLoggedIn ? (
+              <button onClick={handleLogout}>Logout</button>
+            ) : (
+              <button onClick={handleLogin}>Log In with Internet Identity</button>
+            )}
           </div>
-          <div
-              style={{ display: 'flex', flexDirection: 'column', rowGap: '1rem', padding: '1rem', alignItems: 'stretch' }}>
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}>
-              <span>II login:</span>
-              {isLoggedIn ? (
-                  <button onClick={handleLogout}>Logout</button>
-              ) : (
-                  <button onClick={handleLogin}>Log In with Internet Identity</button>
-              )}
-            </div>
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Seed principal:</span>
-              <input type='text' onChange={(e) => onSeedInput(e.target.value)} />
-            </div>
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}>
-              <span><b>Me: {identity.getPrincipal().toText()}</b></span>
-              <button onClick={() => copyToClipboard(identity.getPrincipal().toText())}>Copy</button>
-            </div>
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}>
+            <span>Seed principal:</span>
+            <input type='text' onChange={(e) => onSeedInput(e.target.value)} />
           </div>
-          {renderComponent()}
-          <div className='divider' />
-          <div className='log-component'>
-            <div className='log-header'>
-              <h3>LOG</h3>
-              <button onClick={clearLog}>Clear</button>
-            </div>
-            <div ref={logContainerRef} style={{ display: 'flex', flexDirection: 'column', alignSelf: 'center' }}>
-              {log.map((result, index) => (
-                  <span key={index} style={{ color: result.startsWith('Error: ') ? 'red' : 'black' }}>
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}>
+            <span><b>Me: {identity.getPrincipal().toText()}</b></span>
+            <button onClick={() => copyToClipboard(identity.getPrincipal().toText())}>Copy</button>
+          </div>
+        </div>
+        {renderComponent()}
+        <div className='divider' />
+        <div className='log-component'>
+          <div className='log-header'>
+            <h3>LOG</h3>
+            <button onClick={clearLog}>Clear</button>
+          </div>
+          <div ref={logContainerRef} style={{ display: 'flex', flexDirection: 'column', alignSelf: 'center' }}>
+            {log.map((result, index) => (
+              <span key={index} style={{ color: result.startsWith('Error: ') ? 'red' : 'black' }}>
                 {result}
               </span>
-              ))}
-            </div>
+            ))}
           </div>
         </div>
       </div>
+    </div>
   );
 };
 
