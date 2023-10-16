@@ -8,7 +8,7 @@
 type AssetId = nat;
 type SubId = nat;
 type VirId = nat;
-type RemoteId = record { principal; nat };
+type RemoteRef = record { principal; nat };
 type GlobalId = record { nat; nat };
 
 // The only account type at the moment is ft (fungible token). A fungible token
@@ -126,8 +126,9 @@ type IdSelector = variant {
 // An IdSelector without the ability of selecting ranges. Used for selecting
 // remote accounts.
 type RemoteSelector = variant {
-  id : RemoteId;
-  cat : vec variant { id : RemoteId };
+  // should be: ref
+  id : RemoteRef;
+  cat : vec variant { id : RemoteRef };
 };
 
 // The ledger's ingress interface has the following sections:
@@ -179,7 +180,12 @@ type LedgerIngressAPI = service {
   // In both cases the account with id 0 will appear twice in the return value.
   // It is the responsibility of the caller to handle repetitions or to avoid
   // them by crafting the argument correctly.
-  accountInfo : (IdSelector) -> (vec record { SubId; AccountType }) query;
+  accountInfo : (IdSelector) -> (
+    vec record {
+      SubId; 
+      AccountType 
+    }
+  ) query;
 
   // Return the immutable data of virtual accounts, which is:
   // - the type (the ft asset id),
@@ -195,7 +201,24 @@ type LedgerIngressAPI = service {
   virtualAccountInfo : (IdSelector) -> (
     vec record {
       VirId;
-      opt record { AccountType; principal };
+      record { AccountType; principal };
+    }
+  ) query;
+
+  // Return the immutable data of remote accounts, which is:
+  // - the type (the ft asset id)
+  //
+  // Note: This function is called by the access principal of the virtual account.
+  //
+  // Return value is:
+  // - a vector of pairs (remote account id, opt remote account info)
+  //
+  // The second component is null if the remote account is unknown,
+  // has been deleted, or the caller does not have access.
+  remoteAccountInfo : (RemoteSelector) -> (
+    vec record {
+      RemoteRef;
+      record { AccountType };
     }
   ) query;
 
@@ -249,15 +272,21 @@ type LedgerIngressAPI = service {
     }
   ) -> (
     record {
-      accounts : vec record { SubId; AccountState };
-      ftSupplies : vec record { AssetId; FtSupply };
+      accounts : vec record { 
+        SubId; 
+        AccountState 
+      };
+      ftSupplies : vec record { 
+        AssetId;
+        FtSupply 
+      };
       remoteAccounts : vec record {
-        RemoteId;
-        opt record { AccountState; Time };
+        RemoteRef;
+        record { AccountState; Time };
       };
       virtualAccounts : vec record {
         VirId;
-        opt record { AccountState; SubId; Time };
+        record { AccountState; SubId; Time };
       };
     }
   ) query;
