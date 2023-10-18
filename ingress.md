@@ -87,7 +87,7 @@ It returns one of the following states or throws:
 |`awaited`|The transaction has not yet been received from the aggregator but can still come.|
 |`processed:result`|The transaction has been processed and the result is `result`.|
 |`dropped`|The transaction has not been processed and cannot be processed anymore.|
-|``CANISTER_REJECT`` (throw)|The gid does not belong to any previously opened stream.|
+|`CANISTER_REJECT` (throw)|The gid does not belong to any previously opened stream.|
 
 The status `processed` includes the result of the transaction which can be `success` or `failure`.
 The `failure` case furthermore contains information about the error that ocurred.
@@ -129,8 +129,8 @@ It returns one of the following states or traps:
 |`queued:n`|The gid is in the queue and the distance to the queue head is `n`.|
 |`pending`|The gid has been forwarded to the ledger but the aggregator does not know if the batch has been delivered. If the batch cannot be delivered then it will be retried.|
 |`other:time`|The gid has either been settled or was issued by a different aggregator and the last timestamp received from the ledger is `time`.|
-|``CANISTER_REJECT`` (throw)|The gid belongs to the current stream but has not yet been issued.|
-|``CANISTER_ERROR`` (trap)|The aggregator does not have a current stream id.|
+|`CANISTER_REJECT` (throw)|The gid belongs to the current stream but has not yet been issued.|
+|`CANISTER_ERROR` (trap)|The aggregator does not have a current stream id.|
 
 When the aggregator does not have a current stream id then it often also does not know whether the previous stream id was closed or not.
 This happens for example after an uninstall-reinstall cycle before the aggregator has communicated with the ledger.
@@ -172,7 +172,7 @@ Q --> O
 #### Exceptional transitions
 ```mermaid
 flowchart TD
-queued --> X["`CANISTER_ERROR`"]
+queued --> X[CANISTER_ERROR]
 pending --> X
 other --> X
 X --> O2[other]
@@ -180,8 +180,8 @@ X --> O2[other]
 
 |Transition|Description|
 |---|---|
-|any -> ``CANISTER_ERROR``|Uninstall-reinstall cycle.|
-|``CANISTER_ERROR`` -> `other`|New stream is opened.|
+|any -> `CANISTER_ERROR`|Uninstall-reinstall cycle.|
+|`CANISTER_ERROR` -> `other`|New stream is opened.|
 
 Note: The second transition refers to "old" gids,
 i.e. those that are not yet from the new stream.

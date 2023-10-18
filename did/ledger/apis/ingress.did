@@ -8,10 +8,10 @@
 type AssetId = nat;
 type SubId = nat;
 type VirId = nat;
-type RemoteRef = record { principal; nat };
+type RemoteId = record { principal; nat };
 type GlobalId = record { nat; nat };
 
-// The only account type at the moment is ft (fungible token). A fungible token
+// The only account "type" at the moment is ft (fungible token). A fungible token
 // is defined by its asset id. The AccountType of a given account is immutable.
 //
 // Backward compatibility: see [1]
@@ -22,7 +22,7 @@ type AccountType = variant { ft : AssetId };
 // Backward compatibility: see [1]
 type AccountState = variant { ft : nat };
 
-// The supply of a fungible token
+// The supply of a fungible token is a nat. Values must fit in 64 bits.
 type FtSupply = nat;
 
 // Timestamp measured in nanoseconds since the beginning of the Unix epoch. We
@@ -46,7 +46,7 @@ type Time = nat64;
 // break existing clients. Hence clients do not need to wrap the variant inside
 // an opt.
 type GidStatus = variant {
-  awaited : record { };
+  awaited : record {};
   processed : record { opt TxResult };
   dropped : record {};
 };
@@ -111,6 +111,9 @@ type FtTransferErrors = variant {
 // value.
 type IdRange = record { nat; opt nat };
 
+// An id range specific for remote account ids.
+type RemoteIdRange = record { principal; nat; opt nat };
+
 // In the query functions below, we sometimes allow to select a single id or a
 // range or the concatenation of single ids and ranges. Note that `cat` is
 // indeed a "concatenation" as opposed to a "union" which means that repetitions
@@ -123,25 +126,34 @@ type IdSelector = variant {
   cat : vec variant { id : nat; idRange : IdRange };
 };
 
-// An IdSelector without the ability of selecting ranges. Used for selecting
-// remote accounts.
+// An selector as above, but for RemoteIds.
 type RemoteSelector = variant {
-  // should be: ref
-  id : RemoteRef;
-  cat : vec variant { id : RemoteRef };
+  id : RemoteId;
+  idRange : RemoteIdRange;
+  cat : vec variant { id : RemoteId; idRange : RemoteIdRange };
 };
 
 // The ledger's ingress interface has the following sections:
 //
-// * account management queries: accountInfo, virtualAccountInfo, nAccounts, nVirtualAccounts, state
-// * account management updates: openAccounts, openVirtualAccount, deleteVirtualAccount, updateVirtualAccount
-// * token management queries: ftInfo, nFtAssets
-// * token management updates: createFungibleToken
-// * transaction processing queries: txStatus
+// * account management queries:
+//     accountInfo, virtualAccountInfo, remoteAccountInfo,
+//     nAccounts, nVirtualAccounts,
+//     state
+// * account management updates:
+//     openAccounts,
+//     openVirtualAccount, deleteVirtualAccount, updateVirtualAccount
+// * token management queries:
+//     ftInfo, nFtAssets
+// * token management updates:
+//     createFungibleToken
+// * transaction processing queries:
+//     aggregators,
+//     nStreams, streamInfo, streamStatus,
+//     txStatus
 //
-// Note: Account management queries are "non-public", i.e. only the legitimate
-// owner of an account has access to those queries. Token management and
-// transaction processing queries are "public".
+// Note: Account management queries are "non-public", i.e. only the owner
+// (resp. access principal) of an account has access to those queries.
+// Token management and transaction processing queries are "public".
 //
 // Generally, the following holds for this canister interface:
 //
@@ -152,7 +164,7 @@ type RemoteSelector = variant {
 // stopping/stopped are assumed to be transitional states of an upgrade cycle
 // and are therefore temporary. Bugs in the receiver code are assumed to get
 // fixed eventually through an upgrade and are therefore temporary as well.
-// 
+//
 // A throw (CANISTER_REJECT) means that there is an error on the sender side of
 // the call. For example, the sender has passed invalid arguments or was not
 // authorized to make the call. This is a bug on the sender side because the
@@ -161,7 +173,7 @@ type RemoteSelector = variant {
 //
 // In particular, if the ledger is uninitialized then all calls will trap.
 type LedgerIngressAPI = service {
-// === Section: Account management queries
+  // === Section: Account management queries
 
   // Return the immutable data associated with the selected accounts. The
   // immutable data of an account consists of:
@@ -173,17 +185,10 @@ type LedgerIngressAPI = service {
   // - throw (CANISTER_REJECT) if caller is unknown or any of the selected
   // subIds is unknown
   // - a vector of pairs (account id, account type)
-  //
-  // Note: The IdSelector can be crafted in a way the the retuned vector contain
-  // repetitions. For example, one can repeat `id = 0` multiple times in the
-  // selector or one can include `id = 0` as well as `idRange = record { 0; 1}`.
-  // In both cases the account with id 0 will appear twice in the return value.
-  // It is the responsibility of the caller to handle repetitions or to avoid
-  // them by crafting the argument correctly.
   accountInfo : (IdSelector) -> (
     vec record {
-      SubId; 
-      AccountType 
+      SubId;
+      AccountType;
     }
   ) query;
 
@@ -195,9 +200,10 @@ type LedgerIngressAPI = service {
   //
   // Return value is:
   // - throw (CANISTER_REJECT) if caller is unknown or any of the selected
-  // virIds is unknown
-  // - a vector of pairs (virtual account id, opt virtual account info) where
-  // the second component is null if the virtual account has been deleted
+  // VirIds is unknown
+  // - a vector of pairs (virtual account id, virtual account info)
+  //
+  // Deleted virtual accounts are skipped in the returned vector.
   virtualAccountInfo : (IdSelector) -> (
     vec record {
       VirId;
@@ -206,19 +212,19 @@ type LedgerIngressAPI = service {
   ) query;
 
   // Return the immutable data of remote accounts, which is:
-  // - the type (the ft asset id)
+  // - the type (the ft asset id).
   //
   // Note: This function is called by the access principal of the virtual account.
   //
   // Return value is:
   // - a vector of pairs (remote account id, opt remote account info)
   //
-  // The second component is null if the remote account is unknown,
-  // has been deleted, or the caller does not have access.
+  // Remote accounts that are deleted, unknown or not accessible by the caller
+  // are skipped in the returned vector.
   remoteAccountInfo : (RemoteSelector) -> (
     vec record {
-      RemoteRef;
-      record { AccountType };
+      RemoteId;
+      AccountType;
     }
   ) query;
 
@@ -243,25 +249,25 @@ type LedgerIngressAPI = service {
   // The arguments are selectors. A null value for a record field means the
   // empty selector.
   //
-  // The return value for non-null accounts is:
+  // The return value for a non-null accounts selector is:
   // - throw (CANISTER_REJECT) if the caller is unknown or any of the selected
   // SubIds is unknown
   //
-  // The return value for non-null virtual accounts is:
+  // The return value for a non-null virtual accounts selector is:
   // - throw (CANISTER_REJECT) if the caller is unknown or any of the selected
   // VirIds is unknown
-  // - a null entry in the returned vector if the virtual account has been deleted
+  // - deleted virtual accounts are skipped in the returned vector
   //
-  // The return value for non-null ftSupplies is:
+  // The return value for a non-null ftSupplies selector is:
   // - throw (CANISTER_REJECT) if any of the selected AssetIds is unknown
   //
-  // The return value for non-null remote accounts is:
-  // - a null entry in the returned vector if the remote account is unknown, has
-  // been deleted, or the caller does not have access.
+  // The return value for a non-null remote accounts selector is:
+  // - remote accounts that are unknown, deleted, or not accessible by the caller are
+  //   skipped in the return list
   //
   // Note that a caller cannot learn information about virtual accounts of other
-  // principals by querying them as remote accounts. The response will always be
-  // the same (null) regardless of whether the virtual account in inaccessible,
+  // principals by querying them as remote accounts, not even if they exist, because
+  // they are skipped regardless of  whether the virtual account is inaccessible,
   // does not exist or has been deleted.
   state : (
     record {
@@ -272,16 +278,16 @@ type LedgerIngressAPI = service {
     }
   ) -> (
     record {
-      accounts : vec record { 
-        SubId; 
-        AccountState 
+      accounts : vec record {
+        SubId;
+        AccountState;
       };
-      ftSupplies : vec record { 
+      ftSupplies : vec record {
         AssetId;
-        FtSupply 
+        FtSupply;
       };
       remoteAccounts : vec record {
-        RemoteRef;
+        RemoteId;
         record { AccountState; Time };
       };
       virtualAccounts : vec record {
@@ -302,7 +308,7 @@ type LedgerIngressAPI = service {
   // Return value is:
   // - ok : index of first newly openend account
   // - err NoSpaceForPrincipal if caller is unknown an cannot be registered
-  // - err NoSpaceForSubaccount if caller has too many subaccounts already
+  // - err NoSpaceForSubaccount if caller has too many accounts already
   // - err InvalidArguments with text:
   //   - "UnknownFtAsset" if the variant case in AccountType is unknown
   openAccounts : (nat, AccountType) -> (
@@ -435,7 +441,8 @@ type LedgerIngressAPI = service {
   // Return value is:
   // - throw (CANISTER_REJECT) if the description exceeds the allowed length
   // - ok : the asset id assigned to the new token
-  // - err FeeError if the call did not carry the fee required to register a new token
+  // - err FeeError if the caller did not have enough funds to cover the fee
+  //   required to register a new token
   // - err NoSpace if too many tokens are already registered
   // - err TooLongDescription if the description exceeds the allowed length
   createFungibleToken : (nat8, text) -> (
@@ -454,6 +461,18 @@ type LedgerIngressAPI = service {
   // represent a probability of 1. The ledger can use this mechanism to control
   // load balancing between aggregators.
   aggregators : () -> (vec record { principal; nat }) query;
+
+  // Return the total number of registered streams.
+  nStreams : () -> (nat) query;
+
+  // Return the immutable information for a stream given by stream id.
+  // The immutable information is:
+  // - principal of the aggregator owning the stream.
+  //
+  // Return value is:
+  // - throw (CANISTER_REJECT) if any one of the selected stream ids is unknown
+  // - a vector of pairs (stream id, aggregator principal)
+  streamInfo : (IdSelector) -> (vec record { nat; principal }) query;
 
   // Return the status of one or more streams given by their stream ids.
   //
