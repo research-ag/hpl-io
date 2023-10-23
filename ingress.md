@@ -1,10 +1,5 @@
 ## Transaction API for external users
 
-The high-performance ledger (hpl) is a set of canisters spread over various subnets.
-We describe here how external users interact with this set of canisters collectively called the _hpl system_ or simply the _hpl_.
-By external users we mean all clients who communicate with the IC via ingress messages such as wallet frontends, dfx, etc.
-This is not how other canisters interact with the hpl. 
-
 The hpl consists of the ledger canister ("ledger") and multiple aggregator canisters ("aggregators") 
 on different subnets.
 External users submit transactions to any of the aggregators, normally a randomly chosen one.
@@ -29,7 +24,7 @@ in the face of race conditions and other edge cases such as canister restarts.
 
 The philosophy of error handling in all canisters is as follows.
 
-A trap (CANISTER_ERROR) means that there is an error on the receiver side of
+A trap (`CANISTER_ERROR`) means that there is an error on the receiver side of
 the call. For example, the receiver can be stopping, stopped, running but
 uninitialized, or there could be a bug in the receiver. Traps are considered
 temporary errors and the caller can retry the call later. For example,
@@ -37,18 +32,19 @@ stopping/stopped are assumed to be transitional states of an upgrade cycle
 and are therefore temporary. Bugs in the receiver code are assumed to get
 fixed eventually through an upgrade and are therefore temporary as well.
 
-A throw (CANISTER_REJECT) means that there is an error on the sender side of
+A throw (`CANISTER_REJECT`) means that there is an error on the sender side of
 the call. For example, the sender has passed invalid arguments or was not
 authorized to make the call. This is a bug on the sender side because the
 sender should have never made the call with the given arguments. Therefore
 the sender is not expected to handle the response programmatically.
 
 In all other cases, i.e. if an error is expected to occur in normal operation
-and if the caller is expected to handle it programmatically, then an "graceful"
-error is returned. This can be a null value in an option type or a dedicated
-error case in a variant. A typical case is calls that can fail because of race
-conditions. For example, an attempt to access an account that has been deleted
-by a concurrent process. Those case occur naturally in normal operation and the
+and if the caller is expected to handle it programmatically, then a "graceful"
+error is returned. This can be a `null` value in an option type or a dedicated
+error case in a variant. 
+A typical scenario are race conditions.
+For example, access to an account can fail because a concurrent process has deleted it.
+Such scenarios occur naturally in normal operation and the
 caller is expected to handle them.
 
 ### Streams
@@ -86,16 +82,16 @@ We say a gid is _settled_ if it is either processed or dropped.
 The status of a transaction as per its gid can be queried via the `txStatus(gid)` query function.
 It returns one of the following states or throws:
 
-|State|Description|
+|State|Interpretation|
 |---|---|
 |`awaited`|The transaction has not yet been received from the aggregator but can still come.|
-|`processed:result`|The transaction has been processed.|
+|`processed:result`|The transaction has been processed and the result is `result`.|
 |`dropped`|The transaction has not been processed and cannot be processed anymore.|
 |`CANISTER_REJECT` (throw)|The gid does not belong to any previously opened stream.|
 
 The status `processed` includes the result of the transaction which can be `success` or `failure`.
-The `failure` case contains information about the error that errors.
-The `success` case contains information about the execution result of the transactions.
+The `failure` case furthermore contains information about the error that ocurred.
+And the `success` case furthermore contains information about the execution result of the transaction.
 For example, if it is was a `max` transfer then the `success` case contains the amount that was transferred.
 
 The status `awaited` does not necessarily mean that the gid has actually been issued by the aggregator because the ledger does not know that information.
@@ -114,7 +110,7 @@ W --> D[dropped]
 |Transition|Description|
 |---|---|
 |`awaited` -> `processed`|The transaction is received in a batch and processed.|
- `awaited` -> `dropped`|The gids stream is being closed.|
+ `awaited` -> `dropped`|The gid's stream is being closed.|
  
 The ledger will close a stream after a period of inactivity, i.e. if no batches were received for that stream for a certain time.
 This indicates an interruption in the communication between aggregator and ledger.
@@ -128,7 +124,7 @@ Without this mechanism the client would never be able to safely resubmit and wou
 The status of a transaction as per its gid can be queried via the `txStatus(gid)` query function.
 It returns one of the following states or traps:
 
-|State|Description|
+|State|Interpretation|
 |---|---|
 |`queued:n`|The gid is in the queue and the distance to the queue head is `n`.|
 |`pending`|The gid has been forwarded to the ledger but the aggregator does not know if the batch has been delivered. If the batch cannot be delivered then it will be retried.|
@@ -137,16 +133,22 @@ It returns one of the following states or traps:
 |`CANISTER_ERROR` (trap)|The aggregator does not have a current stream id.|
 
 When the aggregator does not have a current stream id then it often also does not know whether the previous stream id was closed or not.
-This happens for example after a fresh install before the aggregator has communicated with the ledger.
+This happens for example after an uninstall-reinstall cycle before the aggregator has communicated with the ledger.
 In this case, the only safe response is to trap because the aggregator cannot distinguish between pending and settled.
+The case is considered temporary, hence the trap.
 
-Note: By a _fresh install_ we mean the state after first installation or after an uninstall-reinstall cycle.
-The state after a stop-upgrade cycle is not called a fresh install.
-An aggregator can go through a stop-upgrade cycle and maintain its stream id. 
+Note: The protocol is designed such that the aggregator does not need to preserve any state across upgrades. 
+It can legitimately be uninstalled (wiped) an reinstalled.
+However, if programmed accordingly, 
+an aggregator can upgrade and maintain its stream id,
+in which case the trap mentioned above would never occur.
 
-Note: The case `other` for practical purposes means `settled`. This is because in practice a client will query the correct aggregator, the one which has issued the gid. And in this case `other` is equivalent to `settled`.
+Note: The case `other` for practical purposes means `settled`. This is because in practice a client will query the correct aggregator, the one which has issued the gid. 
+And under that assumption the case `other` is equivalent to `settled`.
 
-Note: The ledger time is useful for clients who query the ledger after having received the `other:time` response. It is possible that the subsequent ledger query is routed to a node that has fallen behind and produces a query response from before the transaction was processed. Knowing the ledger time the client can determine whether the node was up-to-date or not.
+Note: The ledger time is useful for clients who query the ledger after having received the `other:time` response.
+It is possible that the subsequent ledger query is routed to a node that has fallen behind and produces a query response from before the transaction was processed.
+Knowing the ledger time, the client can determine whether the node was up-to-date or not.
 
 #### Standard transitions
 
@@ -170,7 +172,7 @@ Q --> O
 #### Exceptional transitions
 ```mermaid
 flowchart TD
-queued --> X["CANISTER_ERROR"]
+queued --> X[CANISTER_ERROR]
 pending --> X
 other --> X
 X --> O2[other]
@@ -181,9 +183,12 @@ X --> O2[other]
 |any -> `CANISTER_ERROR`|Uninstall-reinstall cycle.|
 |`CANISTER_ERROR` -> `other`|New stream is opened.|
 
-Note: The second transition means that all old gids return `other` after a new stream is opened.
-The reason is the behavior of the ledger. 
-When the aggregator receives a new stream from the ledger then it knows that the ledger has closed all its old stream ids.
+Note: The second transition refers to "old" gids,
+i.e. those that are not yet from the new stream.
+The ledger closes all old streams of an aggregator 
+before opening a new stream for that aggregator.
+This behavior guarantees that the "old" gids are indeed settled,
+hence their state is now `other`.
 
 ### Client flow to track transaction status
 
@@ -197,7 +202,7 @@ When that happens the ledger will also return the transaction result (success or
 The client polls the aggregator while the status is either queued or pending.
 While the status is queued the polling interval can be adjusted based on the distance n from the head of the queue.
 The further away the slower we need to poll.
-When the polling stops then the status is `other`.
+The polling stops when the status is `other`.
 Now the client does a single query to the ledger and receives either `processed:result` or `dropped`.
 
 ```mermaid
@@ -221,7 +226,7 @@ Note: If we have received `other` once for a gid from the aggregator that issued
 the ledger cannot return `awaited`.
 
 Proof: The state `other` can be reached only from `pending` or from `CANISTER_ERROR`.
-The transition `pending -> other` only happens if the transaction's batch was was processed,
+The transition `pending -> other` only happens if the transaction's batch was processed,
 in which case the ledger returns `processed`.
 The transition `CANISTER_ERROR -> other` only happens if a new stream was opened,
 which means the old stream must have been closed,
@@ -238,19 +243,19 @@ This approach creates latency that can be avoided
 if we include polling the ledger.
 
 For example, 
-the client can poll the aggregator only while the gid is `queued`.
-As soon as it is `pending` the client can start to poll the ledger
-and continue to do so while the status is `awaited`.
-When polling stops then the status is either `processed` or `dropped`.
-This is quicker overall.
+as soon as the status at the aggregator is `pending` the client can already start to poll the ledger
+and continue to do so while the status at the ledger is `awaited`.
+Polling stops then the status is either `processed` or `dropped` at the ledger.
+This approach is quicker overall.
 
-However, polling the ledger is unbounded and does not give the client sufficient status updates.
+However, polling the ledger may not give the client sufficient status updates.
 For example, delivery of a batch could fail and the status at the aggregator can go from pending back to queued.
 Most clients will want to catch that, 
 update it in the user frontend, 
-and go back to polling the aggregator.
-Therefore, it is advisable to time out polling the ledger 
-and switch back to polling the aggregator at some point.
+and go back to polling the aggregator until the status there is pending again.
+Therefore,
+while polling the ledger,
+it is advisable to query the aggregator again from time to time.
 
 ```mermaid
 flowchart TD
