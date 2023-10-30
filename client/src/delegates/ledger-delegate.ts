@@ -13,7 +13,6 @@ import { idlFactory as ledgerIDLFactory } from '../../candid/ledger.idl';
 import { Delegate } from './delegate';
 import { unpackVariant } from '../utils/unpack-variant';
 import { accountInfoCast, JsAccountInfo, JsAccountState, ledgerStateCast } from './types';
-import { unpackRes } from '../utils/unpack-res.util';
 
 export type TxResult = any; // TODO type when implemented
 export type TxLedStatus =
@@ -49,7 +48,14 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
     selector: IdSelector,
   ): Promise<Array<[bigint, { type: 'ft'; assetId: AssetId; accessPrincipal: Principal } | null]>> {
     const info = await this.query((await this.service).virtualAccountInfo, selector);
-    return info.map(([id, x]) => [id, !!x[0] ? { type: 'ft', assetId: x[0][0].ft, accessPrincipal: x[0][1] } : null]);
+    return info.map(([id, x]) => [id, !!x[0] ? { type: 'ft', assetId: x[0].ft, accessPrincipal: x[1] } : null]);
+  }
+
+  async remoteAccountInfo(
+    selector: RemoteSelector,
+  ): Promise<Array<[[Principal, VirId], { type: 'ft'; assetId: AssetId } | null]>> {
+    const info = await this.query((await this.service).remoteAccountInfo, selector);
+    return info.map(([id, x]) => [id, { type: 'ft', assetId: x.ft }]);
   }
 
   async createFungibleToken(decimals: number, description: string): Promise<bigint> {
@@ -131,8 +137,9 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
     return res.map(([principal, priority]) => ({ principal, priority: Number(priority) }));
   }
 
-  async aggregatorPrincipal(streamId: bigint): Promise<Principal> {
-    return unpackRes(this.query((await this.service).aggregatorPrincipal, streamId));
+  async aggregatorPrincipal(streamId: bigint): Promise<Principal | null> {
+    const [info] = await this.query((await this.service).streamInfo, { id: streamId });
+    return info ? info[1] : null;
   }
 
   async nStreams(): Promise<bigint> {
@@ -158,7 +165,7 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
     remoteAccounts?: RemoteSelector;
   }): Promise<{
     ftSupplies: Array<[AssetId, bigint]>;
-    virtualAccounts: Array<[VirId, { state: JsAccountState; backingSubaccountId: bigint; expiration: bigint } | null]>;
+    virtualAccounts: Array<[VirId, { state: JsAccountState; backingSubaccountId: bigint; expiration: bigint }]>;
     accounts: Array<[SubId, JsAccountState]>;
     remoteAccounts: Array<[[Principal, VirId], { state: JsAccountState; expiration: bigint } | null]>;
   }> {

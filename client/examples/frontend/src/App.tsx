@@ -1,6 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './App.css';
-import { AggregatorDelegate, bigIntReplacer, bigIntReviver, HPLClient, LedgerDelegate, LedgerAdminDelegate } from '@research-ag/hpl-client';
+import {
+  AggregatorDelegate,
+  bigIntReplacer,
+  bigIntReviver,
+  HPLClient,
+  LedgerAdminDelegate,
+  LedgerDelegate,
+} from '@research-ag/hpl-client';
 import OpenSubaccount from './components/OpenSubaccount';
 import OpenVirtualAccount from './components/OpenVirtualAccount';
 import UpdateVirtualAccount from './components/UpdateVirtualAccount';
@@ -14,6 +21,7 @@ import GidSelectorInput from './components/GidSelectorInput';
 import { copyToClipboard, zip } from './utils';
 import { AnonymousIdentity, Identity } from '@dfinity/agent';
 import { Ed25519KeyIdentity } from '@dfinity/identity';
+import RemoteAccountsSelectorInput, { RemoteSelector } from './components/RemoteAccountsSelectorInput';
 
 type NavOption = {
   label: string;
@@ -76,8 +84,8 @@ const App: React.FC = () => {
   const [queryAssetsSelector, setQueryAssetsSelector] = useState<IdSelector | undefined>();
   const [queryAccountId, setQueryAccountId] = useState(0);
   const [queryAccountsSelector, setQueryAccountsSelector] = useState<IdSelector | undefined>();
+  const [queryRemoteAccountsSelector, setQueryRemoteAccountsSelector] = useState<RemoteSelector | undefined>();
   const [queryVirtualsSelector, setQueryVirtualsSelector] = useState<IdSelector | undefined>();
-  const [remotePrincipal, setRemotePrincipal] = useState<string>('');
   const [aggregatorPrincipal, setAggregatorPrincipal] = useState<string>('');
   const [aggregatorPrincipalAutoDetect, setAggregatorPrincipalAutoDetect] = useState<boolean>(true);
   const [queryGlobalId0, setQueryGlobalId0] = useState(0);
@@ -177,11 +185,26 @@ const App: React.FC = () => {
   };
 
   const onQueryRemoteVirtualAccountStateClicked = async () => {
-    const data = (await client.ledger.state({ remoteAccounts: { id: [Principal.fromText(remotePrincipal), BigInt(queryAccountId)] } })).remoteAccounts[0][1];
-    if (data) {
-      appendLogEntry(`Remote Virtual Account state (account holder: ${remotePrincipal}, account id: ${queryAccountId}): type: ${data.state.type}, balance: ${data.state.balance}, expiration: ${data.expiration}`);
-    } else {
-      appendLogEntry(`Remote Virtual Account state (account holder: ${remotePrincipal}, account id: ${queryAccountId}): deleted`);
+    const data = (await client.ledger.state({ remoteAccounts: queryRemoteAccountsSelector || { cat: [] } })).remoteAccounts;
+    appendLogEntry(`Remote Virtual Account states:`);
+    for (const [[p, id], status] of data) {
+      if (status) {
+        appendLogEntry(`[account holder: ${p}, account id: ${id}]: balance: ${status.state.balance}, expiration: ${status.expiration}`);
+      } else {
+        appendLogEntry(`[account holder: ${p}, account id: ${id}]: deleted`);
+      }
+    }
+  };
+
+  const onQueryRemoteVirtualAccountInfoClicked = async () => {
+    const data = (await client.ledger.remoteAccountInfo(queryRemoteAccountsSelector || { cat: [] }));
+    appendLogEntry(`Remote Virtual Account info-s:`);
+    for (const [[p, id], status] of data) {
+      if (status) {
+        appendLogEntry(`[account holder: ${p}, account id: ${id}]: type: ${status.type}, asset id: ${status.assetId}`);
+      } else {
+        appendLogEntry(`[account holder: ${p}, account id: ${id}]: deleted`);
+      }
     }
   };
 
@@ -195,6 +218,10 @@ const App: React.FC = () => {
     let aggregator!: AggregatorDelegate;
     if (aggregatorPrincipalAutoDetect) {
       let p = await client.ledger.aggregatorPrincipal(BigInt(queryGlobalId0));
+      if (!p) {
+        appendLogEntry('Error: aggregator not found');
+        return;
+      }
       appendLogEntry('Auto-detected aggregator principal: ' + p.toText());
       aggregator = await client.createAggregatorDelegate(p);
     } else {
@@ -397,16 +424,12 @@ const App: React.FC = () => {
     {
       label: 'query',
       component: (
-        <div className='query-input'>
-          <input type='text' placeholder='Owner principal' value={remotePrincipal}
-                 onChange={(event) => {
-                   setRemotePrincipal(event.target.value);
-                 }} />
-          <input type='number' placeholder='Account ID' value={queryAccountId}
-                 onChange={(event) => {
-                   setQueryAccountId(Number(event.target.value));
-                 }} />
-          <button onClick={wrapCall(onQueryRemoteVirtualAccountStateClicked)}>Query</button>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '1em' }}>
+          <RemoteAccountsSelectorInput onOutputChange={setQueryRemoteAccountsSelector}></RemoteAccountsSelectorInput>
+          <div style={{ display: 'flex', columnGap: '1rem' }}>
+            <button onClick={wrapCall(onQueryRemoteVirtualAccountStateClicked)}>Query State</button>
+            <button onClick={wrapCall(onQueryRemoteVirtualAccountInfoClicked)}>Query Info</button>
+          </div>
         </div>
       ),
     },
