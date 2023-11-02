@@ -18,7 +18,7 @@ import SimpleTransfer from './components/SimpleTransfer';
 import MultiQuery from './components/MultiQuery';
 import IdSelectorInput, { IdSelector } from './components/IdSelectorInput';
 import GidSelectorInput from './components/GidSelectorInput';
-import { copyToClipboard, zip } from './utils';
+import { copyToClipboard, logTime, zip } from './utils';
 import { AnonymousIdentity, Identity } from '@dfinity/agent';
 import { Ed25519KeyIdentity } from '@dfinity/identity';
 import RemoteAccountsSelectorInput, { RemoteSelector } from './components/RemoteAccountsSelectorInput';
@@ -209,9 +209,11 @@ const App: React.FC = () => {
   };
 
   const onDeleteVirtualAccountClicked = async () => {
-    appendLogEntry(`Deleting virtual account with id ${BigInt(queryAccountId)} .....`);
-    const result = await client.ledger.deleteVirtualAccount(BigInt(queryAccountId));
-    appendLogEntry(`Virtual account with id ${queryAccountId} deleted successfully, last seen balance: ${result.balance}`);
+    await logTime(appendLogEntry, async () => {
+      appendLogEntry(`Deleting virtual account with id ${BigInt(queryAccountId)} .....`);
+      const result = await client.ledger.deleteVirtualAccount(BigInt(queryAccountId));
+      appendLogEntry(`Virtual account with id ${queryAccountId} deleted successfully, last seen balance: ${result.balance}`);
+    });
   };
 
   const onQueryTxAggregatorClicked = async () => {

@@ -100,7 +100,7 @@ export abstract class Delegate<T> {
     }>,
     ...args: Args
   ): Promise<Ok> {
-    return unpackRes(this.query(call, ...args));
+    return unpackRes(this.update(call, ...args));
   }
 
   public async getFunction(methodName: string): Promise<IDL.FuncClass | undefined> {

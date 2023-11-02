@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { HPLClient } from '@research-ag/hpl-client';
+import { logTime } from '../utils';
 
 interface OpenSubaccountProps {
   client: HPLClient;
@@ -19,14 +20,15 @@ const OpenSubaccount: React.FC<OpenSubaccountProps> = ({ client, onLogEntry }) =
   };
 
   const handleButtonClick = async () => {
-    try {
-      onLogEntry(`Opening subaccounts (args: { ft: ${BigInt(assetId) }}, ${amount}) .....`);
-      const { first } = await client.ledger.openAccounts({ ft: BigInt(assetId) }, amount);
-      onLogEntry(`Opened ${amount} subaccounts with consequent id-s, starting from ${first}`);
-    } catch (err) {
-      onLogEntry(`Error: ${err}`);
-    }
-    ;
+    await logTime(onLogEntry, async () => {
+      try {
+        onLogEntry(`Opening subaccounts (args: { ft: ${BigInt(assetId) }}, ${amount}) .....`);
+        const { first } = await client.ledger.openAccounts({ ft: BigInt(assetId) }, amount);
+        onLogEntry(`Opened ${amount} subaccounts with consequent id-s, starting from ${first}`);
+      } catch (err) {
+        onLogEntry(`Error: ${err}`);
+      }
+    });
   };
 
   return (

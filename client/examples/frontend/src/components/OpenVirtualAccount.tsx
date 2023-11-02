@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { HPLClient } from '@research-ag/hpl-client';
+import { logTime } from '../utils';
 
 interface OpenVirtualAccountProps {
   client: HPLClient;
@@ -34,19 +35,21 @@ const OpenVirtualAccount: React.FC<OpenVirtualAccountProps> = ({ client, onLogEn
   };
 
   const handleButtonClick = async () => {
-    try {
-      onLogEntry(`Opening virtual account (account: ${BigInt(backingAccount)}, accessPrincipal: ${accessPrincipal}, asset id: ${assetId}, balance: ${balance}, ${expiration}) .....`);
-      const id = (await client.ledger.openVirtualAccount(
-        { type: 'ft', assetId: BigInt(assetId) },
-        accessPrincipal,
-        { type: 'ft', balance: BigInt(balance) },
-        BigInt(backingAccount),
-        expiration || undefined,
-      )).id;
-      onLogEntry(`Opened virtual account with ID ${id}`);
-    } catch (err) {
-      onLogEntry(`Error: ${err}`);
-    }
+    await logTime(onLogEntry, async () => {
+      try {
+        onLogEntry(`Opening virtual account (account: ${BigInt(backingAccount)}, accessPrincipal: ${accessPrincipal}, asset id: ${assetId}, balance: ${balance}, ${expiration}) .....`);
+        const id = (await client.ledger.openVirtualAccount(
+          { type: 'ft', assetId: BigInt(assetId) },
+          accessPrincipal,
+          { type: 'ft', balance: BigInt(balance) },
+          BigInt(backingAccount),
+          expiration || undefined,
+        )).id;
+        onLogEntry(`Opened virtual account with ID ${id}`);
+      } catch (err) {
+        onLogEntry(`Error: ${err}`);
+      }
+    });
   };
 
   return (

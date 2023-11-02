@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import AccountRefSelector from './AccountRefSelector';
 import { HPLClient, TransferAccountReference } from '@research-ag/hpl-client';
 import { runOrPickupSimpleTransfer } from '../services/simple-transfer';
+import { logTime } from '../utils';
 
 interface SimpleTransferProps {
   client: HPLClient;
@@ -36,10 +37,10 @@ const SimpleTransfer: React.FC<SimpleTransferProps> = ({ client, onLogEntry }) =
   };
 
   const handleButtonClick = async () => {
-    const start = Date.now();
-    const localId = Date.now();
-    await runOrPickupSimpleTransfer(localId, [from, to, BigInt(assetId), amountVariant === 'max' ? 'max' : BigInt(amount)], client, onLogEntry);
-    onLogEntry(`Operation took ${(Date.now() - start) / 1000} seconds`);
+    await logTime(onLogEntry, async () => {
+      const localId = Date.now();
+      await runOrPickupSimpleTransfer(localId, [from, to, BigInt(assetId), amountVariant === 'max' ? 'max' : BigInt(amount)], client, onLogEntry);
+    });
   };
 
   return (

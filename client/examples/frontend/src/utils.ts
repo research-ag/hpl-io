@@ -25,11 +25,18 @@ export const copyToClipboard = (textToCopy: string) => {
   document.body.removeChild(tempInput);
 };
 
+export const logTime = async <T>(logFunc: (s: string) => void, func: () => Promise<T>): Promise<T> => {
+  const start = Date.now();
+  const res = await func();
+  logFunc(`Operation took ${(Date.now() - start) / 1000} seconds`);
+  return res;
+};
+
 type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
 export const unpackVariant = <T>(
   variant: T,
 ): [keyof UnionToIntersection<T>, UnionToIntersection<T>[keyof UnionToIntersection<T>]] => {
-  if (variant instanceof Array && variant.length == 1) {
+  if (variant instanceof Array && variant.length === 1) {
     variant = variant[0];
   }
   const key = Object.keys(variant as any)[0] as keyof T;

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { HPLClient } from '@research-ag/hpl-client';
+import { logTime } from '../utils';
 
 interface UpdateVirtualAccountProps {
   client: HPLClient;
@@ -30,20 +31,22 @@ const UpdateVirtualAccount: React.FC<UpdateVirtualAccountProps> = ({ client, onL
   };
 
   const handleButtonClick = async () => {
-    try {
-      onLogEntry(`Updating virtual account (args: ${BigInt(vid)}, ${backingAccount}, ${expiration}, ${balanceChangeType === 'none' ? 'null' : balanceChangeType + ' ' + balance}) .....`);
-      const result = (await client.ledger.updateVirtualAccount(
-        BigInt(vid),
-        {
-          backingAccount: (backingAccount || backingAccount === 0) ? BigInt(backingAccount) : undefined,
-          expiration: (expiration || expiration === 0) ? +expiration : undefined,
-          state: balanceChangeType === 'none' ? undefined : { [balanceChangeType]: balance } as any,
-        },
-      ));
-      onLogEntry(`Updated virtual account (id = ${vid}): type: ${result.type}, balance: ${result.balance}, balance delta: ${result.delta}`);
-    } catch (err) {
-      onLogEntry(`Error: ${err}`);
-    }
+    await logTime(onLogEntry, async () => {
+      try {
+        onLogEntry(`Updating virtual account (args: ${BigInt(vid)}, ${backingAccount}, ${expiration}, ${balanceChangeType === 'none' ? 'null' : balanceChangeType + ' ' + balance}) .....`);
+        const result = (await client.ledger.updateVirtualAccount(
+          BigInt(vid),
+          {
+            backingAccount: (backingAccount || backingAccount === 0) ? BigInt(backingAccount) : undefined,
+            expiration: (expiration || expiration === 0) ? +expiration : undefined,
+            state: balanceChangeType === 'none' ? undefined : { [balanceChangeType]: balance } as any,
+          },
+        ));
+        onLogEntry(`Updated virtual account (id = ${vid}): type: ${result.type}, balance: ${result.balance}, balance delta: ${result.delta}`);
+      } catch (err) {
+        onLogEntry(`Error: ${err}`);
+      }
+    });
   };
 
   return (
