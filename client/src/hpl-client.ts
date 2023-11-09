@@ -191,7 +191,7 @@ export class HPLClient {
                 subj.next(await pollAggregatorRoutine());
               } catch (e) {
                 if (
-                  notYetIssuedCounter < 10 &&
+                  notYetIssuedCounter < 20 &&
                   e instanceof HplError &&
                   e.errorKey == 'CanisterReject' &&
                   e.errorPayload == 'Not yet issued'
@@ -217,7 +217,15 @@ export class HPLClient {
               }
               break;
             case 'final':
-              await pollLedgerRoutine(true);
+              let attemptsLeft = 20;
+              while (attemptsLeft > 0) {
+                if (await pollLedgerRoutine(attemptsLeft == 1)) {
+                  break;
+                } else {
+                  await sleep(250);
+                  attemptsLeft--;
+                }
+              }
               break pollingLoop;
           }
           counter++;
