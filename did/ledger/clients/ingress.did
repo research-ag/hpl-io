@@ -269,9 +269,6 @@ service : () -> {
   // Return the list of aggregators (their principals).
   aggregators : () -> (vec record { principal; nat }) query;
 
-  // Return the principal of aggregator, which owns the provided stream id
-  aggregatorPrincipal : (nat) -> (variant { ok : principal; err : variant { NotFound } }) query;
-
   // Return the total number of registered streams;
   nStreams : () -> (nat) query;
 

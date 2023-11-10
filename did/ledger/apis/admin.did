@@ -15,9 +15,11 @@ type IdSelector = variant {
   idRange : IdRange;
   cat : vec variant { id : nat; idRange : IdRange };
 };
+type RemoteIdRange = record { principal; nat; opt nat };
 type RemoteSelector = variant {
   id : RemoteId;
-  cat : vec variant { id : RemoteId };
+  idRange : RemoteIdRange;
+  cat : vec variant { id : RemoteId; idRange : RemoteIdRange };
 };
 
 type LedgerAdminAPI = service {
@@ -76,11 +78,11 @@ type LedgerAdminAPI = service {
       ftSupplies : vec record { AssetId; FtSupply };
       remoteAccounts : vec record {
         RemoteId;
-        opt record { AccountState; Time };
+        record { AccountState; Time };
       };
       virtualAccounts : vec record {
         VirId;
-        opt record { AccountState; SubId; Time };
+        record { AccountState; SubId; Time };
       };
     }
   ) query;
