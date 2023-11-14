@@ -50,6 +50,7 @@ type FtTransfer = record {
     amount : nat;
     max;
   };
+  feeMode : opt variant { senderPays; receiverPays };
   memo : vec blob;
 };
 type AssetId = nat;

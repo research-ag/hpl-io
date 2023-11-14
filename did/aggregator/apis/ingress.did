@@ -33,6 +33,7 @@ type FtTransfer = record {
   to : AccountRef;
   asset : AssetId;
   amount : variant { amount : nat; max };
+  feeMode : opt variant { senderPays; receiverPays };
   memo : vec blob;
 };
 
