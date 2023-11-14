@@ -6,6 +6,7 @@ import {
   HPLClient,
   SimpleTransferStatusKey,
   TransferAccountReference,
+  FeeMode,
 } from '@research-ag/hpl-client';
 import { Principal } from '@dfinity/principal';
 import { RequestId } from '@dfinity/agent';
@@ -13,7 +14,7 @@ import { pollForResponse } from '@dfinity/agent/lib/cjs/polling';
 import { maxAttempts } from '@dfinity/agent/lib/cjs/polling/strategy';
 
 export const TX_HISTORY_KEY = 'tx_history_';
-export type TxArgs = [from: TransferAccountReference, to: TransferAccountReference, asset: bigint, amount: number | BigInt | 'max', memo?: Array<Uint8Array | number[]>];
+export type TxArgs = [from: TransferAccountReference, to: TransferAccountReference, asset: bigint, amount: number | BigInt | 'max', feeMode?: FeeMode, memo?: Array<Uint8Array | number[]>];
 
 export type TxHistoryEntry = {
   txArgs: TxArgs;

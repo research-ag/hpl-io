@@ -8,6 +8,7 @@ import { Actor, AnonymousIdentity, Identity, RequestId } from '@dfinity/agent';
 import { AccountRef, TxInput } from '../candid/aggregator';
 import { sleep } from './utils/sleep.util';
 import { HplError } from './hpl-error';
+import { FeeMode } from './types';
 
 export type SimpleTransferStatusKey = 'queued' | 'forwarding' | 'forwarded' | 'processed';
 
@@ -98,9 +99,10 @@ export class HPLClient {
     to: TransferAccountReference,
     asset: AssetId,
     amount: number | BigInt | 'max',
+    feeMode: FeeMode | null = null,
     memo: Array<Uint8Array | number[]> = [],
   ): Promise<GlobalId> {
-    return aggregator.singleSubmitAndExecute(this._txInputFromRawArgs(from, to, asset, amount, memo));
+    return aggregator.singleSubmitAndExecute(this._txInputFromRawArgs(from, to, asset, amount, feeMode, memo));
   }
 
   async prepareSimpleTransfer(
@@ -109,11 +111,12 @@ export class HPLClient {
     to: TransferAccountReference,
     asset: AssetId,
     amount: number | BigInt | 'max',
+    feeMode: FeeMode | null = null,
     memo: Array<Uint8Array | number[]> = [],
   ): Promise<{ requestId: RequestId; commit: () => Promise<GlobalId> }> {
     const { requestId, call: commit } = await aggregator.prepareUpdateRequest<[[TxInput]], [GlobalId]>(
       'submitAndExecute',
-      [this._txInputFromRawArgs(from, to, asset, amount, memo)],
+      [this._txInputFromRawArgs(from, to, asset, amount, feeMode, memo)],
     );
     return {
       requestId,
@@ -131,13 +134,21 @@ export class HPLClient {
     subj.pipe(takeWhile(() => !interrupted)).subscribe(s => {
       lastStatus = s;
     });
-    setTimeout(async () => {
-      try {
-        let pollingState = 'aggregator';
-        let counter = 0;
+    let pollingState = 'aggregator';
 
-        const pollAggregatorRoutine = async (): Promise<SimpleTransferStatus> => {
+    // polls aggregator until it responds with "other" status; controls polling state.
+    const pollAggregator = async (getInterrupted: () => boolean) => {
+      // sometimes it is possible that txStatus will be answered by fallen-behind replica
+      // in this case we can catch not possible otherwise error "Not yet issued".
+      // we ignore up to 20 such errors
+      let notYetIssuedCounter = 0;
+      while (!getInterrupted()) {
+        try {
           const txStatus = await aggregator.singleTxStatus(txId);
+          // while we were waiting to response, the polling could've been already interrupted by ledger polling or externally
+          if (getInterrupted()) {
+            return;
+          }
           let status: SimpleTransferStatus = null!;
           if (txStatus.status == 'queued') {
             status = { status: 'queued', txId, statusPayload: txStatus.queueNumber };
@@ -155,17 +166,58 @@ export class HPLClient {
             status = { status: 'forwarded', txId };
             pollingState = 'final';
           }
-          return status;
-        };
-        const pollLedgerRoutine = async (throwErrorOnAwaited: boolean) => {
-          const ledgerStatus = await this.ledger.singleTxStatus(txId);
-          if (ledgerStatus.status === 'dropped') {
+          subj.next(status);
+        } catch (e) {
+          if (
+            notYetIssuedCounter < 20 &&
+            e instanceof HplError &&
+            e.errorKey == 'CanisterReject' &&
+            e.errorPayload == 'Not yet issued'
+          ) {
+            notYetIssuedCounter++;
+          } else {
+            throw e;
+          }
+        }
+        switch (pollingState) {
+          case 'aggregator':
+            await sleep(250);
+            break;
+          case 'both':
+            await sleep(750);
+            break;
+          default:
+            return;
+        }
+      }
+    };
+
+    // polls ledger until it responds with "processed" status
+    const pollLedger = async (getInterrupted: () => boolean) => {
+      // sometimes it is possible that txStatus will be answered by fallen-behind replica
+      // in this case we can catch not possible otherwise status "awaited", even after aggregator reported "other".
+      // we ignore up to 20 such errors
+      let finalCallsCounter = 0;
+      while (!getInterrupted()) {
+        if (pollingState === 'aggregator') {
+          await sleep(50);
+          continue;
+        } else if (pollingState === 'final') {
+          finalCallsCounter++;
+        }
+        const ledgerStatus = await this.ledger.singleTxStatus(txId);
+        // while we were waiting to response, the polling could've been already interrupted externally
+        if (getInterrupted()) {
+          return;
+        }
+        switch (ledgerStatus.status) {
+          case 'dropped':
             throw new Error('Ledger responded with "dropped" state');
-          } else if (ledgerStatus.status === 'processed') {
+          case 'processed':
             subj.next({ status: 'processed', txId, statusPayload: ledgerStatus.result });
-            return true;
-          } else if (ledgerStatus.status === 'awaited') {
-            if (throwErrorOnAwaited) {
+            return;
+          case 'awaited':
+            if (finalCallsCounter >= 20) {
               throw new Error('Ledger responded with "awaited" state, when aggregator already forwarded transaction');
             } else {
               subj.next({
@@ -176,65 +228,25 @@ export class HPLClient {
                 },
               });
             }
-          }
-          return false;
-        };
-        // sometimes it is possible that txStatus will be answered by fallen-behind replica
-        // in this case we can catch not possible otherwise error "Not yet issued".
-        // we ignore up to 10 such errors
-        let notYetIssuedCounter = 0;
-        pollingLoop: while (true) {
-          switch (pollingState) {
-            case 'aggregator':
-              await sleep(250);
-              try {
-                subj.next(await pollAggregatorRoutine());
-              } catch (e) {
-                if (
-                  notYetIssuedCounter < 20 &&
-                  e instanceof HplError &&
-                  e.errorKey == 'CanisterReject' &&
-                  e.errorPayload == 'Not yet issued'
-                ) {
-                  notYetIssuedCounter++;
-                } else {
-                  throw e;
-                }
-              }
-              break;
-            case 'both':
-              await sleep(250);
-              const routines: [l: Promise<boolean>, a?: Promise<SimpleTransferStatus>] = [pollLedgerRoutine(false)];
-              if (counter % 3 == 0) {
-                routines.push(pollAggregatorRoutine());
-              }
-              const [processed, aggStatus] = await Promise.all(routines);
-              if (processed) {
-                break pollingLoop;
-              }
-              if (aggStatus) {
-                subj.next(aggStatus);
-              }
-              break;
-            case 'final':
-              let attemptsLeft = 20;
-              while (attemptsLeft > 0) {
-                if (await pollLedgerRoutine(attemptsLeft == 1)) {
-                  break;
-                } else {
-                  await sleep(250);
-                  attemptsLeft--;
-                }
-              }
-              break pollingLoop;
-          }
-          counter++;
         }
-      } catch (err) {
-        subj.error(err);
+        await sleep(250);
+      }
+    };
+
+    const interrupt = (error?: Error) => {
+      interrupted = true;
+      if (error) {
+        subj.error(error);
       }
       subj.complete();
-    }, 0);
+    };
+
+    // poll aggregator in background, ignore finishing
+    pollAggregator(() => interrupted).catch(e => interrupt(e));
+    // poll ledger and wait for finish (processed state)
+    pollLedger(() => interrupted)
+      .then(() => interrupt())
+      .catch(e => interrupt(e));
     return subj.pipe(finalize(() => (interrupted = true)));
   }
 
@@ -243,8 +255,15 @@ export class HPLClient {
     to: TransferAccountReference,
     asset: AssetId,
     amount: number | BigInt | 'max',
+    feeMode: FeeMode | null,
     memo: Array<Uint8Array | number[]> = [],
   ): TxInput {
+    let hplFeeMode : [({ receiverPays: null } | { senderPays: null })] | [] = [];
+    if (feeMode === FeeMode.SENDER_PAYS) {
+      hplFeeMode = [{ senderPays: null }];
+    } else if (feeMode === FeeMode.RECEIVER_PAYS) {
+      hplFeeMode = [{ receiverPays: null }];
+    }
     return {
       ftTransfer: {
         from: toAccountRef(from),
@@ -252,6 +271,7 @@ export class HPLClient {
         asset,
         amount:
           amount === 'max' ? { max: null } : { amount: typeof amount == 'bigint' ? amount : BigInt(amount as number) },
+        feeMode: hplFeeMode,
         memo,
       },
     };
