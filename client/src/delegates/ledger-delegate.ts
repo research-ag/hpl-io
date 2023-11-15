@@ -8,11 +8,13 @@ import {
   RemoteSelector,
   SubId,
   VirId,
+  GidStatus,
 } from '../../candid/ledger';
 import { idlFactory as ledgerIDLFactory } from '../../candid/ledger.idl';
 import { Delegate } from './delegate';
 import { unpackVariant } from '../utils/unpack-variant';
 import { accountInfoCast, JsAccountInfo, JsAccountState, ledgerStateCast } from './types';
+import { QueryRetryInterceptorErrorCallback } from './call-interceptors';
 
 export type TxResult = any; // TODO type when implemented
 export type TxLedStatus =
@@ -104,22 +106,33 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
     return { type: 'ft', balance: result.ft };
   }
 
+  private castTxStatusResponse = (res: GidStatus) => {
+    const [status, payload] = unpackVariant(res);
+    if (status === 'awaited') {
+      return { status, aggregator: (payload as [Principal])[0] };
+    } else if (status === 'processed') {
+      return { status, result: (payload as [[TxResult]] | [])[0] || null };
+    } else {
+      return { status };
+    }
+  };
+
   async txStatus(gids: GlobalId[]): Promise<TxLedStatus[]> {
     const res = await this.query((await this.service).txStatus, gids);
-    return res.map(res => {
-      const [status, payload] = unpackVariant(res);
-      if (status === 'awaited') {
-        return { status, aggregator: (payload as [Principal])[0] };
-      } else if (status === 'processed') {
-        return { status, result: (payload as [[TxResult]] | [])[0] || null };
-      } else {
-        return { status };
-      }
-    });
+    return res.map(this.castTxStatusResponse);
   }
 
   async singleTxStatus(id: GlobalId): Promise<TxLedStatus> {
     return (await this.txStatus([id]))[0];
+  }
+
+  async loggedTxStatus(gids: GlobalId[], errorCallback: QueryRetryInterceptorErrorCallback): Promise<TxLedStatus[]> {
+    const res = await this.loggedQuery((await this.service).txStatus, errorCallback, gids);
+    return res.map(this.castTxStatusResponse);
+  }
+
+  async loggedSingleTxStatus(id: GlobalId, errorCallback: QueryRetryInterceptorErrorCallback): Promise<TxLedStatus> {
+    return (await this.loggedTxStatus([id], errorCallback))[0];
   }
 
   async nFtAssets(): Promise<bigint> {

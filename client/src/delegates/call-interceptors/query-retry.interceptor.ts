@@ -3,6 +3,10 @@ import { sleep } from '../../utils/sleep.util';
 const RETRY_DELAY = 100;
 const MAX_ATTEMPTS = 5;
 
+export type QueryRetryInterceptorErrorCallback =
+  | ((response: { code: number; canisterError: string | null }, goingToRetry: boolean) => void)
+  | null;
+
 function getResponseCode(error: Error): [number, string | null] {
   let code = 500;
   let canisterError = null;
@@ -37,7 +41,8 @@ function getResponseCode(error: Error): [number, string | null] {
 const _retryQueryInterceptor = async <T, Args extends Array<any>>(
   call: (...args: Args) => Promise<T>,
   attempt: number,
-  ...args: Args
+  args: Args,
+  errorCallback: QueryRetryInterceptorErrorCallback,
 ): Promise<T> => {
   try {
     return await call(...args);
@@ -48,18 +53,23 @@ const _retryQueryInterceptor = async <T, Args extends Array<any>>(
       (!canisterError || !['CanisterReject', 'CanisterError'].includes(canisterError)) &&
       attempt < MAX_ATTEMPTS
     ) {
+      if (errorCallback) {
+        errorCallback({ code, canisterError }, true);
+      }
       const delay = RETRY_DELAY * Math.pow(2, attempt);
       await sleep(delay);
-      return _retryQueryInterceptor(call, attempt + 1, ...args);
+      return _retryQueryInterceptor(call, attempt + 1, args, errorCallback);
     } else {
+      if (errorCallback) {
+        errorCallback({ code, canisterError }, false);
+      }
       throw err;
     }
   }
 };
 
-export const retryQueryInterceptor = async <T, Args extends Array<unknown>>(
-  call: (...args: Args) => Promise<T>,
-  ...args: Args
-) => {
-  return _retryQueryInterceptor(call, 0, ...args);
-};
+export const retryQueryInterceptor =
+  (errorCallback: QueryRetryInterceptorErrorCallback = null) =>
+  async <T, Args extends Array<unknown>>(call: (...args: Args) => Promise<T>, ...args: Args) => {
+    return _retryQueryInterceptor(call, 0, args, errorCallback);
+  };

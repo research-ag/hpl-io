@@ -7,12 +7,18 @@ import {
   ActorConfig,
   Agent,
   AnonymousIdentity,
+  Identity,
   polling,
   RequestId,
   SubmitResponse,
   UpdateCallRejectedError,
 } from '@dfinity/agent';
-import { CallInterceptor, hplErrorInterceptor, retryQueryInterceptor } from './call-interceptors';
+import {
+  CallInterceptor,
+  hplErrorInterceptor,
+  QueryRetryInterceptorErrorCallback,
+  retryQueryInterceptor,
+} from './call-interceptors';
 import { unpackOptResponse } from '../utils/unpack-opt.util';
 import { unpackRes } from '../utils/unpack-res.util';
 import { LazyAgent } from '../utils/lazy-agent';
@@ -65,6 +71,10 @@ export abstract class Delegate<T> {
     return this.service!.then(s => Actor.agentOf(s));
   }
 
+  public async replaceIdentity(identity: Identity) {
+    (Actor.agentOf((await this.service) as any as Actor) as any).replaceIdentity(identity);
+  }
+
   protected wrapCall<R, Args extends Array<unknown>>(
     call: (...args: Args) => Promise<R>,
     interceptors: CallInterceptor<R, Args>[],
@@ -76,7 +86,27 @@ export abstract class Delegate<T> {
 
   // run query. Encapsulates error handling, retrying query
   protected query<R, Args extends Array<unknown>>(call: (...args: Args) => Promise<R>, ...args: Args): Promise<R> {
-    return this.wrapCall(call, [retryQueryInterceptor, hplErrorInterceptor], ...args);
+    return this.wrapCall(call, [retryQueryInterceptor(), hplErrorInterceptor], ...args);
+  }
+
+  // run query. Encapsulates error handling, retrying query, reports polling events to provided callback
+  protected loggedQuery<R, Args extends Array<unknown>>(
+    call: (...args: Args) => Promise<R>,
+    errorCallback: QueryRetryInterceptorErrorCallback,
+    ...args: Args
+  ): Promise<R> {
+    return this.wrapCall(call, [retryQueryInterceptor(errorCallback), hplErrorInterceptor], ...args);
+  }
+
+  // run query returning result. Encapsulates error handling, retrying query
+  protected resQuery<Ok, Err, Args extends Array<unknown>>(
+    call: (...args: Args) => Promise<{
+      ok?: Ok;
+      err?: Err;
+    }>,
+    ...args: Args
+  ): Promise<Ok> {
+    return unpackRes(this.query(call, ...args));
   }
 
   // run query returning optional result. Encapsulates error handling, retrying query
