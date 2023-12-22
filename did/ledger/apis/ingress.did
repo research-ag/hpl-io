@@ -147,7 +147,7 @@ type RemoteSelector = variant {
 // * token management updates:
 //     createFungibleToken
 // * transaction processing queries:
-//     aggregators,
+//     feeRatio, aggregators,
 //     nStreams, streamInfo, streamStatus,
 //     txStatus
 //
@@ -453,6 +453,10 @@ type LedgerIngressAPI = service {
   );
 
   // === Section: Transaction processing queries
+
+  // Return the inverted fraction of fee. Return value N means that the
+  // fee for transaction would be `transfer_amount/N` (rounded up) tokens
+  feeRatio : () -> (nat) query;
 
   // Return the list of aggregators (their principals) and priority values
   // (nat). The client is advised to use the priority values when randomly

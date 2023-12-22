@@ -106,6 +106,10 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
     return { type: 'ft', balance: result.ft };
   }
 
+  async feeRatio(): Promise<bigint> {
+    return this.query((await this.service).feeRatio);
+  }
+
   private castTxStatusResponse = (res: GidStatus) => {
     const [status, payload] = unpackVariant(res);
     if (status === 'awaited') {

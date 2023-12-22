@@ -250,6 +250,10 @@ service : () -> {
 
   // ======== QUERIES (other) ========
 
+  // Return the inverted fraction of fee. Return value N means that the
+  // fee for transaction would be `transfer_amount/N` (rounded up) tokens
+  feeRatio : () -> (nat) query;
+
   // Return the static information for fungible tokens.
   //
   // Return value is:
