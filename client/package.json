@@ -16,8 +16,8 @@
     "url": "https://github.com/research-ag/hpl/issues"
   },
   "scripts": {
-    "compile-did": "npm run rm-did && mkdir ./candid/ && cp ../did/aggregator/apis/ingress.did ./candid/aggregator.did && cp ../did/ledger/apis/ingress.did ./candid/ledger.did && cp ../did/ledger/apis/admin.did ./candid/ledger_admin.did && sh scripts/compile-idl-js",
-    "rm-did": "rm -rf ./candid/",
+    "compile-did": "npm run rm-did && sh scripts/compile-idl-js",
+    "rm-did": "rm -rf ./candid/*.js && rm -rf ./candid/*.ts",
     "rmdir": "rm -rf ./dist",
     "ts-declaration": "tsc --emitDeclarationOnly --outDir dist/types",
     "build": "npm run compile-did && npm run rmdir && mkdir -p dist && cp -R candid dist && node scripts/esbuild.mjs && npm run ts-declaration",
@@ -36,9 +36,9 @@
   ],
   "homepage": "https://github.com/research-ag/hpl#readme",
   "devDependencies": {
-    "@dfinity/agent": "0.19.3",
-    "@dfinity/candid": "0.19.3",
-    "@dfinity/principal": "0.19.3",
+    "@dfinity/agent": "0.20.2",
+    "@dfinity/candid": "0.20.2",
+    "@dfinity/principal": "0.20.2",
     "@types/jest": "^29.5.1",
     "@types/text-encoding": "^0.0.36",
     "esbuild": "^0.17.18",
@@ -51,9 +51,9 @@
     "whatwg-fetch": "^3.6.2"
   },
   "peerDependencies": {
-    "@dfinity/agent": "0.19.3",
-    "@dfinity/candid": "0.19.3",
-    "@dfinity/principal": "0.19.3"
+    "@dfinity/agent": "0.20.2",
+    "@dfinity/candid": "0.20.2",
+    "@dfinity/principal": "0.20.2"
   },
   "dependencies": {
     "rxjs": "^7.8.1"

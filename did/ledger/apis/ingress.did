@@ -5,133 +5,7 @@
 // return values are structurally equivalent to the ones derived from the Motoko
 // source code.
 
-type AssetId = nat;
-type SubId = nat;
-type VirId = nat;
-type RemoteId = record { principal; nat };
-type GlobalId = record { nat; nat };
-
-// The only account "type" at the moment is ft (fungible token). A fungible token
-// is defined by its asset id. The AccountType of a given account is immutable.
-//
-// Backward compatibility: see [1]
-type AccountType = variant { ft : AssetId };
-
-// The mutable state of a fungible token account is defined by its balance.
-//
-// Backward compatibility: see [1]
-type AccountState = variant { ft : nat };
-
-// The supply of a fungible token is a nat. Values must fit in 64 bits.
-type FtSupply = nat;
-
-// Timestamp measured in nanoseconds since the beginning of the Unix epoch. We
-// only need timestamps in the future, hence negative values are not allowed.
-//
-// In the context of account expiration the sentinel value of 0 means that
-// the account does not expire.
-type Time = nat64;
-
-// A gid (global id) is a globally unique transaction id. GidStatus describes
-// the progress made on the processing of a submitted transaction. See README.md
-// for further explanation of the status states.
-//
-// State `processed` includes the processing result. A null value means that the
-// processing result has already been archived. The caller must then call the
-// archive.
-//
-// Backwards compatibility:
-// In the future, additional data can be returned inside each of the variant
-// cases of GidStatus. No new cases should be introduced because that would
-// break existing clients. Hence clients do not need to wrap the variant inside
-// an opt.
-type GidStatus = variant {
-  awaited : record {};
-  processed : record { opt TxResult };
-  dropped : record {};
-};
-
-// This type describes the result of processing a transaction.
-//
-// Backwards compatibility: New variant cases beyond success and failure will
-// not be added because that would break existing clients.
-type TxResult = variant {
-  failure : ProcessingError;
-  success : TxOutput;
-};
-
-// The type TxOutput describes the effect of a successfully processed
-// transaction. For example, if a transaction was specified as transferring a
-// "max" amount then this type describes the actual amount that was transferred.
-// "amount" is the amount credited to the receiver and "amount + fee" is the
-// amount debited to the sender.
-//
-// The variant cases inside TxOutput match the cases in the corresponding
-// TxInput type used by the aggregator. Usually, the effect of a transaction can
-// be completely understood if TxInput and TxOutput of that transaction are
-// known.
-//
-// The type ProcessingError describes the reason why an unsuccessfully processed
-// transaction failed.
-//
-// Backwards compatibility: Expect new variant cases to be added to both types.
-// However, generally, client code will query for the transaction result only
-// for those transactions that it has itself submitted. If that is true then the
-// client code will never receive an unknown variant case here, hence the client
-// code can but does not need to wrap these inside an opt.
-type TxOutput = variant {
-  ftTransfer : record { amount : nat; fee : nat };
-};
-type ProcessingError = variant {
-  ftTransfer : FtTransferErrors;
-};
-
-// This type describes the reason why an ftTransfer failed.
-//
-// The possible text strings for InvalidArguments are:
-// "MismatchInAsset" : asset ids of transfer and account did not match
-// "MismatchInRemotePrincipal" : principal has no access to virtual account
-// "NotAController" : minting or burning attemped by the wrong principal
-// "UnknownFtAsset" : an asset id in the transaction does not exist
-// "UnknownPrincipal" : an account owner in the transaction does not exist
-// "UnknownSubaccount" : an account in the transaction does not exist
-// "UnknownVirtualAccount" : a virtual account in the transaction does not exist
-//
-// Backwards compatibility: see [1].
-type FtTransferErrors = variant {
-  DeletedVirtualAccount;
-  InsufficientFunds;
-  InvalidArguments : text;
-};
-
-// In the query functions below, we sometimes allow to select ranges of ids. An
-// IdRange is a pair of ids (from, to) which means the inclusive interval
-// [from,to]. The first id must be smaller than or equal to the second id. If
-// the second id is `null` then the range goes all the way to the last possible
-// value.
-type IdRange = record { nat; opt nat };
-
-// An id range specific for remote account ids.
-type RemoteIdRange = record { principal; nat; opt nat };
-
-// In the query functions below, we sometimes allow to select a single id or a
-// range or the concatenation of single ids and ranges. Note that `cat` is
-// indeed a "concatenation" as opposed to a "union" which means that repetitions
-// are not removed. For example a selector such as
-//   `cat = vec { id = 1; idRange = record { 0; 1 } }`
-// will lead to a repetition of id 1 in the output.
-type IdSelector = variant {
-  id : nat;
-  idRange : IdRange;
-  cat : vec variant { id : nat; idRange : IdRange };
-};
-
-// An selector as above, but for RemoteIds.
-type RemoteSelector = variant {
-  id : RemoteId;
-  idRange : RemoteIdRange;
-  cat : vec variant { id : RemoteId; idRange : RemoteIdRange };
-};
+import "../ledger-types.did";
 
 // The ledger's ingress interface has the following sections:
 //
@@ -330,6 +204,9 @@ type LedgerIngressAPI = service {
   // - initial virtual account state (i.e. ft asset balance)
   // - backing account by SubId
   // - initial expiration
+  //
+  // In the context of account expiration the Time value of 0 means that
+  // the account does not expire.
   //
   // Note: The first two arguments define the immutable virtual account data.
   // The last three arguments define the initial state of the mutable virtual

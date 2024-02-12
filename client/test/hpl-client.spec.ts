@@ -24,14 +24,14 @@ describe('HPLClient', () => {
     it('should complete with "processed" status', (done) => {
       // Mock necessary dependencies and setup
       const aggregator: AggregatorDelegate = {
-        singleTxStatus: () => Promise.resolve({ status: 'other', lastLedgerTimestamp: BigInt(123) }),
+        timestampedSingleTxStatus: () => Promise.resolve([{ status: 'other', lastLedgerTimestamp: BigInt(123) }, BigInt(0)]),
         canisterPrincipal: { toString: () => 'canister-principal' },
         prepareSimpleTransfer: () => Promise.resolve({
           requestId: new ArrayBuffer(0),
-          commit: () => Promise.resolve([BigInt(0), BigInt(0)]),
+          commit: () => Promise.resolve([[BigInt(0), BigInt(0)], BigInt(0)]),
         }),
       } as any;
-      client.ledger.singleTxStatus = jest.fn().mockResolvedValue({ status: 'processed' });
+      client.ledger.timestampedSingleTxStatus = jest.fn().mockResolvedValue([{ status: 'processed' }, BigInt(0)]);
       const observable: Observable<SimpleTransferStatus> = client.pollTx(aggregator, [BigInt(0), BigInt(0)]);
       observable.subscribe({
         next: ({ status }) => {
@@ -45,19 +45,19 @@ describe('HPLClient', () => {
     });
     it('should not emit aggregator forwarded status after ledger responded with "processed"', async () => {
       const aggregator: AggregatorDelegate = {
-        singleTxStatus: () => new Promise(r => setTimeout(() => r({ status: 'pending' }), 10)),
+        timestampedSingleTxStatus: () => new Promise(r => setTimeout(() => r([{ status: 'pending' }, BigInt(0)]), 10)),
         canisterPrincipal: { toString: () => 'canister-principal' },
         prepareSimpleTransfer: () => Promise.resolve({
           requestId: new ArrayBuffer(0),
-          commit: () => Promise.resolve([BigInt(0), BigInt(0)]),
+          commit: () => Promise.resolve([[BigInt(0), BigInt(0)], BigInt(0)]),
         }),
       } as any;
       let counter = 3;
-      client.ledger.singleTxStatus = jest.fn().mockImplementation(() => {
+      client.ledger.timestampedSingleTxStatus = jest.fn().mockImplementation(() => {
         counter--;
         return counter > 0
-          ? { status: 'awaited', aggregator: Principal.anonymous() }
-          : { status: 'processed' };
+          ? [{ status: 'awaited', aggregator: Principal.anonymous() }, BigInt(0)]
+          : [{ status: 'processed' }, BigInt(0)];
       });
       const finalResult = await lastValueFrom(client.pollTx(aggregator, [BigInt(0), BigInt(0)]));
       expect(finalResult.status).toBe('processed');
@@ -65,14 +65,14 @@ describe('HPLClient', () => {
     it('should handle "dropped" status and throw an error', (done) => {
       // Mock necessary dependencies and setup
       const aggregator: AggregatorDelegate = {
-        singleTxStatus: () => Promise.resolve({ sent: null }),
+        timestampedSingleTxStatus: () => Promise.resolve([{ status: 'other', lastLedgerTimestamp: BigInt(0) }, BigInt(0)]),
         canisterPrincipal: { toString: () => 'canister-principal' },
         prepareUpdateRequest: () => Promise.resolve({
           requestId: new ArrayBuffer(0),
-          call: () => Promise.resolve([BigInt(0), BigInt(0)]),
+          call: () => Promise.resolve([[BigInt(0), BigInt(0)], BigInt(0)]),
         }),
       } as any;
-      client.ledger.singleTxStatus = jest.fn().mockResolvedValue({ status: 'dropped' });
+      client.ledger.timestampedSingleTxStatus = jest.fn().mockResolvedValue([{ status: 'dropped' }, BigInt(0)]);
       const observable: Observable<SimpleTransferStatus> = client.pollTx(aggregator, [BigInt(0), BigInt(0)]);
       observable.subscribe({
         error: (error) => {

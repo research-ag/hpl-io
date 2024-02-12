@@ -9,14 +9,15 @@
     "start:ic": "export DFX_NETWORK=ic && node scripts/start.js",
     "build:local": "export DFX_NETWORK=local && node scripts/build.js",
     "build:ic": "export DFX_NETWORK=ic && node scripts/build.js",
-    "test": "node scripts/test.js"
+    "test": "node scripts/test.js",
+    "prettier-format": "prettier --config ../../.prettierrc 'src/**/*.tsx' --write"
   },
   "dependencies": {
     "@babel/core": "^7.16.0",
-    "@dfinity/agent": "0.19.3",
-    "@dfinity/auth-client": "0.19.3",
-    "@dfinity/principal": "0.19.3",
-    "@dfinity/identity": "0.19.3",
+    "@dfinity/agent": "0.20.2",
+    "@dfinity/auth-client": "0.20.2",
+    "@dfinity/principal": "0.20.2",
+    "@dfinity/identity": "0.20.2",
     "@pmmmwh/react-refresh-webpack-plugin": "^0.5.3",
     "@research-ag/hpl-client": "file:../..",
     "@svgr/webpack": "^5.5.0",

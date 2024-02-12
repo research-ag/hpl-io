@@ -25,7 +25,7 @@ compile_did() {
 
   generate_did_factory_ts
 
-  didc bind -t ts "${didfile}" >"${tsfile}"
+  didc bind -t ts "${didfile}" | awk '!/export declare const init/' >"${tsfile}"
 }
 
 # The certified API makes use of the fact that update calls are always signed, so it calls query calls as updates.

@@ -2,13 +2,9 @@ import React, { useEffect, useState } from 'react';
 
 type Range = [number, number | null];
 
-type IdSubSelector =
-  | { id: bigint }
-  | { idRange: [bigint, [] | [bigint]] };
+type IdSubSelector = { id: bigint } | { idRange: [bigint, [] | [bigint]] };
 
-export type IdSelector =
-  | IdSubSelector
-  | { cat: IdSubSelector[]; };
+export type IdSelector = IdSubSelector | { cat: IdSubSelector[] };
 
 const transformSubrange = (range: number | [number, number | null]): IdSubSelector => {
   if (range instanceof Array) {
@@ -29,7 +25,6 @@ interface Props {
 }
 
 function IdSelectorInput({ onOutputChange, value }: Props) {
-
   const stringifySelector: (s: IdSelector) => string = (selector: IdSelector) => {
     if ((selector as any).id !== undefined) {
       return '' + Number((selector as { id: bigint }).id);
@@ -64,7 +59,7 @@ function IdSelectorInput({ onOutputChange, value }: Props) {
       if (part === '') continue;
 
       if (part.includes('-')) {
-        const range: Range = part.split('-').map((num) => (num === '' ? null : Number(num))) as Range;
+        const range: Range = part.split('-').map(num => (num === '' ? null : Number(num))) as Range;
         if (range.length === 2) {
           parsedList.push([range[0] || 0, range[1]]);
         }
@@ -77,7 +72,7 @@ function IdSelectorInput({ onOutputChange, value }: Props) {
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const sanitizedText = e.target.value.replace(/[^0-9,-]|-{2,}/g, (match) => (match === '--' ? '-' : ''));
+    const sanitizedText = e.target.value.replace(/[^0-9,-]|-{2,}/g, match => (match === '--' ? '-' : ''));
     setInputText(sanitizedText);
 
     if (sanitizedText === '') {
@@ -88,14 +83,7 @@ function IdSelectorInput({ onOutputChange, value }: Props) {
     }
   };
 
-  return (
-    <input
-      type='text'
-      value={inputText}
-      onChange={handleInputChange}
-      placeholder='1,3,5-7'
-    />
-  );
+  return <input type="text" value={inputText} onChange={handleInputChange} placeholder="1,3,5-7" />;
 }
 
 export default IdSelectorInput;

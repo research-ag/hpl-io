@@ -5,8 +5,6 @@ import { Delegate } from './delegate';
 import { unpackVariant } from '../utils/unpack-variant';
 import { QueryRetryInterceptorErrorCallback } from './call-interceptors';
 
-// import { idlFactory as certifiedAggregatorIdlFactory } from '../../candid/aggregator.certified.idl';
-
 export type TxAggStatus =
   | { status: 'pending' }
   | { status: 'queued'; queueNumber: bigint }
@@ -36,25 +34,36 @@ export class AggregatorDelegate extends Delegate<AggregatorAPI> {
     }
   };
 
-  async txStatus(gids: GlobalId[]): Promise<TxAggStatus[]> {
-    const res = await this.query((await this.service).txStatus, gids);
+  async txStatus(
+    gids: GlobalId[],
+    retryErrorCallback: QueryRetryInterceptorErrorCallback = null,
+  ): Promise<TxAggStatus[]> {
+    const res = await this.query((await this.service).txStatus, { retryErrorCallback }, gids);
     return res.map(this.castTxStatusResponse);
   }
 
-  async singleTxStatus(id: GlobalId): Promise<TxAggStatus> {
-    return (await this.txStatus([id]))[0];
+  async singleTxStatus(
+    id: GlobalId,
+    retryErrorCallback: QueryRetryInterceptorErrorCallback = null,
+  ): Promise<TxAggStatus> {
+    return (await this.txStatus([id], retryErrorCallback))[0];
   }
 
-  async loggedTxStatus(gids: GlobalId[], errorCallback: QueryRetryInterceptorErrorCallback): Promise<TxAggStatus[]> {
-    const res = await this.loggedQuery((await this.service).txStatus, errorCallback, gids);
-    return res.map(this.castTxStatusResponse);
-  }
-
-  async loggedSingleTxStatus(id: GlobalId, errorCallback: QueryRetryInterceptorErrorCallback): Promise<TxAggStatus> {
-    return (await this.loggedTxStatus([id], errorCallback))[0];
+  async timestampedSingleTxStatus(
+    id: GlobalId,
+    retryErrorCallback: QueryRetryInterceptorErrorCallback = null,
+  ): Promise<[TxAggStatus, bigint]> {
+    const [results, { canisterTimestamp }] = await this.queryWithExtras<[Array<GlobalId>], Array<GidStatus>>(
+      (
+        await this.service
+      ).txStatus,
+      { retryErrorCallback },
+      [id],
+    );
+    return [this.castTxStatusResponse(results[0]), canisterTimestamp];
   }
 
   async streamStatus(): Promise<{ id: bigint; sent: bigint; received: bigint; length: bigint }[]> {
-    return (await this.service).streamStatus();
+    return this.query((await this.service).streamStatus);
   }
 }

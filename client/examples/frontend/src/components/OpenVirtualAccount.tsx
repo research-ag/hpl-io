@@ -37,14 +37,20 @@ const OpenVirtualAccount: React.FC<OpenVirtualAccountProps> = ({ client, onLogEn
   const handleButtonClick = async () => {
     await logTime(onLogEntry, async () => {
       try {
-        onLogEntry(`Opening virtual account (account: ${BigInt(backingAccount)}, accessPrincipal: ${accessPrincipal}, asset id: ${assetId}, balance: ${balance}, ${expiration}) .....`);
-        const id = (await client.ledger.openVirtualAccount(
-          { type: 'ft', assetId: BigInt(assetId) },
-          accessPrincipal,
-          { type: 'ft', balance: BigInt(balance) },
-          BigInt(backingAccount),
-          expiration || undefined,
-        )).id;
+        onLogEntry(
+          `Opening virtual account (account: ${BigInt(
+            backingAccount,
+          )}, accessPrincipal: ${accessPrincipal}, asset id: ${assetId}, balance: ${balance}, ${expiration}) .....`,
+        );
+        const id = (
+          await client.ledger.openVirtualAccount(
+            { type: 'ft', assetId: BigInt(assetId) },
+            accessPrincipal,
+            { type: 'ft', balance: BigInt(balance) },
+            BigInt(backingAccount),
+            expiration || undefined,
+          )
+        ).id;
         onLogEntry(`Opened virtual account with ID ${id}`);
       } catch (err) {
         onLogEntry(`Error: ${err}`);
@@ -56,24 +62,34 @@ const OpenVirtualAccount: React.FC<OpenVirtualAccountProps> = ({ client, onLogEn
     <div style={{ display: 'flex', flexDirection: 'column', rowGap: '2rem', padding: '1rem' }}>
       <div style={{ display: 'flex', flexDirection: 'row', columnGap: '1rem', justifyContent: 'center' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Asset ID:</b></span>
-          <input type='number' value={assetId} onChange={handleAssetIdChange} />
+          <span>
+            <b>Asset ID:</b>
+          </span>
+          <input type="number" value={assetId} onChange={handleAssetIdChange} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Balance:</b></span>
-          <input type='number' value={balance} onChange={handleBalanceChange} />
+          <span>
+            <b>Balance:</b>
+          </span>
+          <input type="number" value={balance} onChange={handleBalanceChange} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Access principal:</b></span>
-          <input type='text' placeholder='Principal' value={accessPrincipal} onChange={handleAccessPrincipalChange} />
+          <span>
+            <b>Access principal:</b>
+          </span>
+          <input type="text" placeholder="Principal" value={accessPrincipal} onChange={handleAccessPrincipalChange} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Expiration in ms (0 for infinite):</b></span>
-          <input type='number' value={expiration || 0} onChange={handleExpirationChange} />
+          <span>
+            <b>Expiration in ms (0 for infinite):</b>
+          </span>
+          <input type="number" value={expiration || 0} onChange={handleExpirationChange} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Backing account:</b></span>
-          <input type='number' value={backingAccount} onChange={handleBackingAccountChange} />
+          <span>
+            <b>Backing account:</b>
+          </span>
+          <input type="number" value={backingAccount} onChange={handleBackingAccountChange} />
         </div>
         <button onClick={handleButtonClick}>Send</button>
       </div>

@@ -33,16 +33,19 @@ const UpdateVirtualAccount: React.FC<UpdateVirtualAccountProps> = ({ client, onL
   const handleButtonClick = async () => {
     await logTime(onLogEntry, async () => {
       try {
-        onLogEntry(`Updating virtual account (args: ${BigInt(vid)}, ${backingAccount}, ${expiration}, ${balanceChangeType === 'none' ? 'null' : balanceChangeType + ' ' + balance}) .....`);
-        const result = (await client.ledger.updateVirtualAccount(
-          BigInt(vid),
-          {
-            backingAccount: (backingAccount || backingAccount === 0) ? BigInt(backingAccount) : undefined,
-            expiration: (expiration || expiration === 0) ? +expiration : undefined,
-            state: balanceChangeType === 'none' ? undefined : { [balanceChangeType]: balance } as any,
-          },
-        ));
-        onLogEntry(`Updated virtual account (id = ${vid}): type: ${result.type}, balance: ${result.balance}, balance delta: ${result.delta}`);
+        onLogEntry(
+          `Updating virtual account (args: ${BigInt(vid)}, ${backingAccount}, ${expiration}, ${
+            balanceChangeType === 'none' ? 'null' : balanceChangeType + ' ' + balance
+          }) .....`,
+        );
+        const result = await client.ledger.updateVirtualAccount(BigInt(vid), {
+          backingAccount: backingAccount || backingAccount === 0 ? BigInt(backingAccount) : undefined,
+          expiration: expiration || expiration === 0 ? +expiration : undefined,
+          state: balanceChangeType === 'none' ? undefined : ({ [balanceChangeType]: balance } as any),
+        });
+        onLogEntry(
+          `Updated virtual account (id = ${vid}): type: ${result.type}, balance: ${result.balance}, balance delta: ${result.delta}`,
+        );
       } catch (err) {
         onLogEntry(`Error: ${err}`);
       }
@@ -53,27 +56,39 @@ const UpdateVirtualAccount: React.FC<UpdateVirtualAccountProps> = ({ client, onL
     <div style={{ display: 'flex', flexDirection: 'column', rowGap: '2rem', padding: '1rem' }}>
       <div style={{ display: 'flex', flexDirection: 'row', columnGap: '1rem', justifyContent: 'center' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Virtual account ID:</b></span>
-          <input type='number' value={vid} onChange={handleVidChange} />
+          <span>
+            <b>Virtual account ID:</b>
+          </span>
+          <input type="number" value={vid} onChange={handleVidChange} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Backing account:</b></span>
-          <input type='number' value={(backingAccount || backingAccount === 0) ? backingAccount : ''} onChange={handleBackingAccountChange} />
+          <span>
+            <b>Backing account:</b>
+          </span>
+          <input
+            type="number"
+            value={backingAccount || backingAccount === 0 ? backingAccount : ''}
+            onChange={handleBackingAccountChange}
+          />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Expiration in ms (0 for infinite):</b></span>
-          <input type='number' value={expiration === null ? '' : expiration} onChange={handleExpirationChange} />
+          <span>
+            <b>Expiration in ms (0 for infinite):</b>
+          </span>
+          <input type="number" value={expiration === null ? '' : expiration} onChange={handleExpirationChange} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Balance:</b></span>
-          <select value={balanceChangeType} onChange={(event) => setBalanceChangeType(event.target.value as any)}>
+          <span>
+            <b>Balance:</b>
+          </span>
+          <select value={balanceChangeType} onChange={event => setBalanceChangeType(event.target.value as any)}>
             <option value="none">Do not change</option>
             <option value="ft_set">Set</option>
             <option value="ft_inc">Increment</option>
             <option value="ft_dec">Decrement</option>
           </select>
-          { balanceChangeType !== 'none' && (
-            <input type='number' value={balance === null ? '' : balance} onChange={handleBalanceChange} />
+          {balanceChangeType !== 'none' && (
+            <input type="number" value={balance === null ? '' : balance} onChange={handleBalanceChange} />
           )}
         </div>
         <button onClick={handleButtonClick}>Send</button>

@@ -22,7 +22,7 @@ const TupleInput: React.FC<TupleInputProps> = ({ onValuesChange }) => {
   };
 
   const handleAddInput = () => {
-    setInputValues([...inputValues, ["", 0]]);
+    setInputValues([...inputValues, ['', 0]]);
     onValuesChange(inputValues);
   };
 
@@ -35,18 +35,11 @@ const TupleInput: React.FC<TupleInputProps> = ({ onValuesChange }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       {inputValues.map((tuple, index) => (
-        <div key={index}
-             style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem', columnGap: '0.25rem' }}>
-          <input
-            type='text'
-            value={tuple[0]}
-            onChange={(e) => handleTextChange(index, e.target.value)}
-          />
-          <input
-            type='number'
-            value={tuple[1]}
-            onChange={(e) => handleNumberChange(index, parseFloat(e.target.value))}
-          />
+        <div
+          key={index}
+          style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem', columnGap: '0.25rem' }}>
+          <input type="text" value={tuple[0]} onChange={e => handleTextChange(index, e.target.value)} />
+          <input type="number" value={tuple[1]} onChange={e => handleNumberChange(index, parseFloat(e.target.value))} />
           <button onClick={() => handleRemoveInput(index)}>-</button>
         </div>
       ))}

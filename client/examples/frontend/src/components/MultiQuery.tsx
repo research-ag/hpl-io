@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { HPLClient } from '@research-ag/hpl-client';
-import IdSelectorInput, { IdSelector } from './IdSelectorInput';
-import TupleInput from './TupleInput';
+import IdSelectorInput, { IdSelector } from './inputs/IdSelectorInput';
+import TupleInput from './inputs/TupleInput';
 import { Principal } from '@dfinity/principal';
 import { bigIntPrincipalReplacer } from '../utils';
 
@@ -23,9 +23,12 @@ const MultiQuery: React.FC<SimpleTransferProps> = ({ client, onLogEntry }) => {
         accounts,
         virtualAccounts,
         ftSupplies,
-        remoteAccounts: remoteConverted.length > 0
-          ? (remoteConverted?.length > 1 ? { cat: remoteConverted.map(id => ({ id })) } : { id: remoteConverted[0] })
-          : undefined,
+        remoteAccounts:
+          remoteConverted.length > 0
+            ? remoteConverted?.length > 1
+              ? { cat: remoteConverted.map(id => ({ id })) }
+              : { id: remoteConverted[0] }
+            : undefined,
       };
       onLogEntry('Calling multi-query with argument: ' + JSON.stringify(query, bigIntPrincipalReplacer));
       const result = await client.ledger.state(query);
@@ -39,19 +42,27 @@ const MultiQuery: React.FC<SimpleTransferProps> = ({ client, onLogEntry }) => {
     <div style={{ display: 'flex', flexDirection: 'column', rowGap: '2rem', padding: '1rem' }}>
       <div style={{ display: 'flex', flexDirection: 'row', columnGap: '1rem', justifyContent: 'center' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Accounts:</b></span>
+          <span>
+            <b>Accounts:</b>
+          </span>
           <IdSelectorInput value={accounts} onOutputChange={setAccounts} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Virtual accounts:</b></span>
+          <span>
+            <b>Virtual accounts:</b>
+          </span>
           <IdSelectorInput value={virtualAccounts} onOutputChange={setVirtualAccounts} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>FT supplies:</b></span>
+          <span>
+            <b>FT supplies:</b>
+          </span>
           <IdSelectorInput value={ftSupplies} onOutputChange={setFtSupplies} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Remote virtual accounts:</b></span>
+          <span>
+            <b>Remote virtual accounts:</b>
+          </span>
           <TupleInput onValuesChange={setRemoteAccounts} />
         </div>
         <button onClick={handleButtonClick}>Query</button>

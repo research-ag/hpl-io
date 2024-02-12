@@ -23,10 +23,15 @@ export function httpHeadersTransform(headers: Headers): [string, string][] {
 // Default delta for ingress expiry is 5 minutes.
 const DEFAULT_INGRESS_EXPIRY_DELTA_IN_MSECS = 5 * 60 * 1000;
 
+export interface LazyRequest<Res> {
+  requestId: RequestId;
+  call: () => Promise<Res>;
+}
+
 /**
  * The HTTP agent for calling canister, but have ability to prepare request and return request id before perfoming actual call
  * */
-export class LazyAgent extends HttpAgent {
+export class HplAgent extends HttpAgent {
   public async prepareRequest(
     canisterId: Principal | string,
     options: {
@@ -35,10 +40,7 @@ export class LazyAgent extends HttpAgent {
       effectiveCanisterId?: Principal | string;
     },
     identity?: Identity | Promise<Identity>,
-  ): Promise<{
-    requestId: RequestId;
-    call: () => Promise<SubmitResponse>;
-  }> {
+  ): Promise<LazyRequest<SubmitResponse>> {
     // copy-paste from HttpAgent::call
     const id = await (identity !== undefined ? await identity : await this['_identity']);
     if (!id) {

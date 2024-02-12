@@ -1,0 +1,3 @@
+import "../../did/aggregator/apis/ingress.did";
+
+service : () -> AggregatorIngressAPI;

@@ -3,12 +3,13 @@ import {
   _SERVICE as LedgerAPI,
   AccountType,
   AssetId,
+  GidStatus,
   GlobalId,
   IdSelector,
   RemoteSelector,
   SubId,
+  Time,
   VirId,
-  GidStatus,
 } from '../../candid/ledger';
 import { idlFactory as ledgerIDLFactory } from '../../candid/ledger.idl';
 import { Delegate } from './delegate';
@@ -35,7 +36,10 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
   }
 
   async accountInfo(selector: IdSelector): Promise<Array<[bigint, JsAccountInfo]>> {
-    return (await this.query((await this.service).accountInfo, selector)).map(([id, x]) => [id, accountInfoCast(x)]);
+    return (await this.query((await this.service).accountInfo, {}, selector)).map(([id, x]) => [
+      id,
+      accountInfoCast(x),
+    ]);
   }
 
   async nAccounts(): Promise<bigint> {
@@ -49,14 +53,14 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
   async virtualAccountInfo(
     selector: IdSelector,
   ): Promise<Array<[bigint, { type: 'ft'; assetId: AssetId; accessPrincipal: Principal } | null]>> {
-    const info = await this.query((await this.service).virtualAccountInfo, selector);
+    const info = await this.query((await this.service).virtualAccountInfo, {}, selector);
     return info.map(([id, x]) => [id, !!x[0] ? { type: 'ft', assetId: x[0].ft, accessPrincipal: x[1] } : null]);
   }
 
   async remoteAccountInfo(
     selector: RemoteSelector,
   ): Promise<Array<[[Principal, VirId], { type: 'ft'; assetId: AssetId } | null]>> {
-    const info = await this.query((await this.service).remoteAccountInfo, selector);
+    const info = await this.query((await this.service).remoteAccountInfo, {}, selector);
     return info.map(([id, x]) => [id, { type: 'ft', assetId: x.ft }]);
   }
 
@@ -93,7 +97,18 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
       expiration?: number;
     },
   ): Promise<{ type: 'ft'; balance: bigint; delta: bigint }> {
-    const response = await this.resUpdate((await this.service).updateVirtualAccount, vid, {
+    const response = await this.resUpdate<
+      [
+        VirId,
+        {
+          backingAccount: [] | [SubId];
+          state: [] | [{ ft_dec: bigint } | { ft_inc: bigint } | { ft_set: bigint }];
+          expiration: [] | [Time];
+        },
+      ],
+      { ft: [bigint, bigint] },
+      { DeletedVirtualAccount: null } | { InvalidArguments: string } | { InsufficientFunds: null }
+    >((await this.service).updateVirtualAccount, vid, {
       backingAccount: updates.backingAccount || updates.backingAccount === BigInt(0) ? [updates.backingAccount] : [],
       state: updates.state ? [updates.state] : [],
       expiration: updates.expiration || updates.expiration === 0 ? [BigInt(updates.expiration) * BigInt(1000000)] : [],
@@ -102,7 +117,11 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
   }
 
   async deleteVirtualAccount(vid: VirId): Promise<{ type: 'ft'; balance: bigint }> {
-    const result = await this.resUpdate((await this.service).deleteVirtualAccount, vid);
+    const result = await this.resUpdate<
+      [VirId],
+      { ft: bigint },
+      { DeletedVirtualAccount: null } | { InvalidArguments: string }
+    >((await this.service).deleteVirtualAccount, vid);
     return { type: 'ft', balance: result.ft };
   }
 
@@ -121,22 +140,33 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
     }
   };
 
-  async txStatus(gids: GlobalId[]): Promise<TxLedStatus[]> {
-    const res = await this.query((await this.service).txStatus, gids);
+  async txStatus(
+    gids: GlobalId[],
+    retryErrorCallback: QueryRetryInterceptorErrorCallback = null,
+  ): Promise<TxLedStatus[]> {
+    const res = await this.query((await this.service).txStatus, { retryErrorCallback }, gids);
     return res.map(this.castTxStatusResponse);
   }
 
-  async singleTxStatus(id: GlobalId): Promise<TxLedStatus> {
-    return (await this.txStatus([id]))[0];
+  async singleTxStatus(
+    id: GlobalId,
+    retryErrorCallback: QueryRetryInterceptorErrorCallback = null,
+  ): Promise<TxLedStatus> {
+    return (await this.txStatus([id], retryErrorCallback))[0];
   }
 
-  async loggedTxStatus(gids: GlobalId[], errorCallback: QueryRetryInterceptorErrorCallback): Promise<TxLedStatus[]> {
-    const res = await this.loggedQuery((await this.service).txStatus, errorCallback, gids);
-    return res.map(this.castTxStatusResponse);
-  }
-
-  async loggedSingleTxStatus(id: GlobalId, errorCallback: QueryRetryInterceptorErrorCallback): Promise<TxLedStatus> {
-    return (await this.loggedTxStatus([id], errorCallback))[0];
+  async timestampedSingleTxStatus(
+    id: GlobalId,
+    retryErrorCallback: QueryRetryInterceptorErrorCallback = null,
+  ): Promise<[TxLedStatus, bigint]> {
+    const [res, callExtraData] = await this.queryWithExtras<[Array<GlobalId>], Array<GidStatus>>(
+      (
+        await this.service
+      ).txStatus,
+      { retryErrorCallback },
+      [id],
+    );
+    return [this.castTxStatusResponse(res[0]), callExtraData.canisterTimestamp];
   }
 
   async nFtAssets(): Promise<bigint> {
@@ -146,7 +176,7 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
   async ftInfo(
     selector: IdSelector,
   ): Promise<Array<[AssetId, { controller: Principal; decimals: number; description: string }]>> {
-    return this.query((await this.service).ftInfo, selector);
+    return this.query((await this.service).ftInfo, {}, selector);
   }
 
   async aggregators(): Promise<{ principal: Principal; priority: number }[]> {
@@ -155,7 +185,7 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
   }
 
   async aggregatorPrincipal(streamId: bigint): Promise<Principal | null> {
-    const [info] = await this.query((await this.service).streamInfo, { id: streamId });
+    const [info] = await this.query((await this.service).streamInfo, {}, { id: streamId });
     return info ? info[1] : null;
   }
 
@@ -164,7 +194,7 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
   }
 
   async streamStatus(selector: IdSelector): Promise<Array<[bigint, StreamStatus]>> {
-    const items = await this.query((await this.service).streamStatus, selector);
+    const items = await this.query((await this.service).streamStatus, {}, selector);
     return items.map(([id, status]) => {
       const [sourceType, sourcePrincipal] = unpackVariant(status.source);
       const source: any = { type: sourceType };
@@ -187,12 +217,18 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
     remoteAccounts: Array<[[Principal, VirId], { state: JsAccountState; expiration: bigint } | null]>;
   }> {
     return ledgerStateCast(
-      await this.query((await this.service).state, {
-        ftSupplies: arg.ftSupplies ? [arg.ftSupplies] : [],
-        virtualAccounts: arg.virtualAccounts ? [arg.virtualAccounts] : [],
-        accounts: arg.accounts ? [arg.accounts] : [],
-        remoteAccounts: arg.remoteAccounts ? [arg.remoteAccounts] : [],
-      }),
+      await this.query(
+        (
+          await this.service
+        ).state,
+        {},
+        {
+          ftSupplies: arg.ftSupplies ? [arg.ftSupplies] : [],
+          virtualAccounts: arg.virtualAccounts ? [arg.virtualAccounts] : [],
+          accounts: arg.accounts ? [arg.accounts] : [],
+          remoteAccounts: arg.remoteAccounts ? [arg.remoteAccounts] : [],
+        },
+      ),
     );
   }
 }

@@ -11,7 +11,8 @@
 .dfx/
 
 # generated files
-client/candid
+client/candid/*.ts
+client/candid/*.js
 
 # frontend code
 node_modules/

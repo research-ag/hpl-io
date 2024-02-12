@@ -22,7 +22,7 @@ const OpenSubaccount: React.FC<OpenSubaccountProps> = ({ client, onLogEntry }) =
   const handleButtonClick = async () => {
     await logTime(onLogEntry, async () => {
       try {
-        onLogEntry(`Opening subaccounts (args: { ft: ${BigInt(assetId) }}, ${amount}) .....`);
+        onLogEntry(`Opening subaccounts (args: { ft: ${BigInt(assetId)}}, ${amount}) .....`);
         const { first } = await client.ledger.openAccounts({ ft: BigInt(assetId) }, amount);
         onLogEntry(`Opened ${amount} subaccounts with consequent id-s, starting from ${first}`);
       } catch (err) {
@@ -35,12 +35,16 @@ const OpenSubaccount: React.FC<OpenSubaccountProps> = ({ client, onLogEntry }) =
     <div style={{ display: 'flex', flexDirection: 'column', rowGap: '2rem', padding: '2rem' }}>
       <div style={{ display: 'flex', flexDirection: 'row', columnGap: '1rem', justifyContent: 'center' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Asset ID:</b></span>
-          <input type='number' value={assetId} onChange={handleAssetIdChange} />
+          <span>
+            <b>Asset ID:</b>
+          </span>
+          <input type="number" value={assetId} onChange={handleAssetIdChange} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span><b>Amount:</b></span>
-          <input type='number' value={amount} onChange={handleAmountChange} />
+          <span>
+            <b>Amount:</b>
+          </span>
+          <input type="number" value={amount} onChange={handleAmountChange} />
         </div>
         <button onClick={handleButtonClick}>Send</button>
       </div>

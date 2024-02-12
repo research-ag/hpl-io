@@ -1,24 +1,4 @@
-type AssetId = nat;
-type SubId = nat;
-type VirId = nat;
-type RemoteId = record { principal; nat };
-
-type AccountType = variant { ft : AssetId };
-type AccountState = variant { ft : nat };
-type FtSupply = nat;
-
-type Time = nat64;
-
-type IdRange = record { nat; opt nat };
-type IdSelector = variant {
-  id : nat;
-  idRange : IdRange;
-  cat : vec variant { id : nat; idRange : IdRange };
-};
-type RemoteSelector = variant {
-  id : RemoteId;
-  cat : vec variant { id : RemoteId };
-};
+import "../ledger-types.did";
 
 service : () -> {
 
@@ -38,20 +18,29 @@ service : () -> {
   ) query;
 
   // Return the number of accounts of the ledger.
-  nAdminAccounts: () -> (nat) query;
+  nAdminAccounts : () -> (nat) query;
 
   // The same as 'state', but returns states on behald of ledger's admin account
-  adminState : (record {
-    accounts: opt IdSelector;
-    ftSupplies: opt IdSelector;
-    remoteAccounts: opt RemoteSelector;
-    virtualAccounts: opt IdSelector;
-  }) ->
-    (record {
-      accounts: vec record { SubId; AccountState };
-      ftSupplies: vec record { AssetId; FtSupply };
-      remoteAccounts: vec record { RemoteId; opt record { AccountState; Time } };
-      virtualAccounts: vec record { VirId; opt record { AccountState; SubId; Time } };
-   }) query;
+  adminState : (
+    record {
+      accounts : opt IdSelector;
+      ftSupplies : opt IdSelector;
+      remoteAccounts : opt RemoteSelector;
+      virtualAccounts : opt IdSelector;
+    }
+  ) -> (
+    record {
+      accounts : vec record { SubId; AccountState };
+      ftSupplies : vec record { AssetId; FtSupply };
+      remoteAccounts : vec record {
+        RemoteId;
+        opt record { AccountState; Time };
+      };
+      virtualAccounts : vec record {
+        VirId;
+        opt record { AccountState; SubId; Time };
+      };
+    }
+  ) query;
 
-}
+};

@@ -3,14 +3,14 @@ import {
   AggregatorDelegate,
   bigIntReplacer,
   bigIntReviver,
+  FeeMode,
   HPLClient,
+  pollForResponseWithTimestamp,
   SimpleTransferStatusKey,
   TransferAccountReference,
-  FeeMode,
 } from '@research-ag/hpl-client';
 import { Principal } from '@dfinity/principal';
 import { RequestId } from '@dfinity/agent';
-import { pollForResponse } from '@dfinity/agent/lib/cjs/polling';
 import { maxAttempts } from '@dfinity/agent/lib/cjs/polling/strategy';
 
 export const TX_HISTORY_KEY = 'tx_history_';
@@ -68,13 +68,16 @@ export const runOrPickupSimpleTransfer = async (
       throw new Error('No available aggregator');
     }
 
+    let submissionTimestamp = BigInt(0);
+
     // submit to aggregator
     if (!txId) {
       if (submitRequestId) {
         logCallback('Retrieving response by request id...');
         const requestId = new Uint8Array(submitRequestId!.split(',') as any as number[]).buffer as RequestId;
-        const responseBytes = await pollForResponse((await aggregator.agent)!, aggregator.canisterPrincipal, requestId, maxAttempts(5));
-        txId = (await aggregator.parseResponse<[bigint, bigint][]>('submitAndExecute', responseBytes, null))[0];
+        const [responseBytes, timestamp] = await pollForResponseWithTimestamp((await aggregator.agent)!, aggregator.canisterPrincipal, requestId, maxAttempts(5));
+        const [gids, _] = await ((await aggregator.service).parseResponse('submitAndExecute', responseBytes, null, timestamp));
+        txId = gids[0];
       } else {
         const { requestId, commit } = await client.prepareSimpleTransfer(aggregator, ...txArgs);
         submitRequestId = (new Uint8Array(requestId)).join(',');
@@ -84,12 +87,12 @@ export const runOrPickupSimpleTransfer = async (
           aggregatorPrincipal: aggregator.canisterPrincipal.toText(),
           submitRequestId,
         }, logCallback, { aggregatorPrincipal: aggregator.canisterPrincipal.toText() }, true);
-        txId = await commit();
+        [txId, submissionTimestamp] = await commit();
       }
     }
 
     // poll tx
-    await lastValueFrom(client.pollTx(aggregator, txId!)
+    await lastValueFrom(client.pollTx(aggregator, txId!, submissionTimestamp)
       .pipe(
         map(x => {
           onTxStatusChanged(localId, {

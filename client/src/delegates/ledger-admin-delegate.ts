@@ -17,7 +17,7 @@ export class LedgerAdminDelegate extends Delegate<LedgerAdminAPI> {
   }
 
   async accountInfo(selector: IdSelector): Promise<Array<[bigint, JsAccountInfo]>> {
-    return (await this.query((await this.service).adminAccountInfo, selector)).map(([id, x]) => [
+    return (await this.query((await this.service).adminAccountInfo, {}, selector)).map(([id, x]) => [
       id,
       accountInfoCast(x),
     ]);
@@ -39,12 +39,18 @@ export class LedgerAdminDelegate extends Delegate<LedgerAdminAPI> {
     remoteAccounts: Array<[[Principal, VirId], { state: JsAccountState; expiration: bigint } | null]>;
   }> {
     return ledgerStateCast(
-      await this.query((await this.service).adminState, {
-        ftSupplies: arg.ftSupplies ? [arg.ftSupplies] : [],
-        virtualAccounts: arg.virtualAccounts ? [arg.virtualAccounts] : [],
-        accounts: arg.accounts ? [arg.accounts] : [],
-        remoteAccounts: arg.remoteAccounts ? [arg.remoteAccounts] : [],
-      }),
+      await this.query(
+        (
+          await this.service
+        ).adminState,
+        {},
+        {
+          ftSupplies: arg.ftSupplies ? [arg.ftSupplies] : [],
+          virtualAccounts: arg.virtualAccounts ? [arg.virtualAccounts] : [],
+          accounts: arg.accounts ? [arg.accounts] : [],
+          remoteAccounts: arg.remoteAccounts ? [arg.remoteAccounts] : [],
+        },
+      ),
     );
   }
 }

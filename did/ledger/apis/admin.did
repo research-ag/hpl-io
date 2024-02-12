@@ -1,26 +1,4 @@
-type AssetId = nat;
-type SubId = nat;
-type VirId = nat;
-type RemoteId = record { principal; nat };
-
-type AccountType = variant { ft : AssetId };
-type AccountState = variant { ft : nat };
-type FtSupply = nat;
-
-type Time = nat64;
-
-type IdRange = record { nat; opt nat };
-type IdSelector = variant {
-  id : nat;
-  idRange : IdRange;
-  cat : vec variant { id : nat; idRange : IdRange };
-};
-type RemoteIdRange = record { principal; nat; opt nat };
-type RemoteSelector = variant {
-  id : RemoteId;
-  idRange : RemoteIdRange;
-  cat : vec variant { id : RemoteId; idRange : RemoteIdRange };
-};
+import "../ledger-types.did";
 
 type LedgerAdminAPI = service {
 
@@ -41,7 +19,7 @@ type LedgerAdminAPI = service {
   adminAccountInfo : (IdSelector) -> (vec record { SubId; AccountType }) query;
 
   // Return the number of accounts of the ledger.
-  nAdminAccounts: () -> (nat) query;
+  nAdminAccounts : () -> (nat) query;
 
   // Atomic query for various mutable states. The functions can be used to query
   // any combination of account states, virtual account states, remote account

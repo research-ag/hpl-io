@@ -86,7 +86,8 @@ const hasJsxRuntime = (() => {
 })();
 
 function initCanisterEnv() {
-  let localCanisters, prodCanisters;
+  let localCanisters = {};
+  let prodCanisters = {};
   try {
     localCanisters = require(path.resolve("../../../deploy/.dfx/local/canister_ids.json"));
   } catch (error) {

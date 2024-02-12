@@ -1,82 +1,16 @@
-// common definitions with aggregator
-type AssetId = nat;
-type SubId = nat;
-type VirId = nat;
-type RemoteId = record { principal; nat };
-
-// Backward compatibility:
-// New variant cases can be added.
-// When AccountType appears in a return value then it is wrapped inside an opt.
-type AccountType = variant { ft : AssetId };
-type AccountState = variant { ft : nat };
-type FtSupply = nat;
-type Time = nat64;
-
-// See README.md for an explanation of the status states.
-//
-// The `GidStatus` contains the information that is independent on the
-// `TxInput`.
-// The information that depends on `TxInput` such as success or failure
-// is returned in the other field inside `TxStatus` called `TxResult`.
-//
-// Backwards compatibility:
-// In the future, additional data can be returned in each of the variant cases
-// by adding fields to the records.
-type GidStatus = variant {
-  awaited : record { };
-  processed : record { opt TxResult };
-  dropped : record {};
-};
-type TxResult = variant {
-  failure : opt ProcessingError;
-  success : opt TxOutput;
-};
-type TxOutput = variant {
-  ftTransfer : record {
-    // amount + fee was deducted at sender, amount was credited at receiver
-    amount : nat;
-    fee : nat;
-  };
-};
-type ProcessingError = variant {
-  ftTransfer : variant {
-    DeletedVirtualAccount;
-    InsufficientFunds;
-    InvalidArguments : text;
-    // "MismatchInAsset"
-    // "MismatchInRemotePrincipal", means no access
-    // "NotAController"
-    // "UnknownFtAsset"
-    // "UnknownPrincipal"
-    // "UnknownSubaccount"
-    // "UnknownVirtualAccount"
-  };
-};
-
-type GlobalId = record { nat; nat };
-
-type IdRange = record { nat; opt nat };
-
-type IdSelector = variant {
-  id : nat;
-  idRange : IdRange;
-  cat : vec variant { id : nat; idRange : IdRange };
-};
-
-type RemoteSelector = variant {
-  id : RemoteId;
-  cat : vec variant { id : RemoteId };
-};
+import "../ledger-types.did";
 
 service : () -> {
   // register a new fungible token, the caller becomes a controller of it
-  createFungibleToken: (nat8, text) -> (variant {
-    ok : AssetId;
-    err : opt variant {
-      FeeError;
-      NoSpace;
-    };
-  });
+  createFungibleToken : (nat8, text) -> (
+    variant {
+      ok : AssetId;
+      err : opt variant {
+        FeeError;
+        NoSpace;
+      };
+    }
+  );
 
   // ======== QUERIES (account management) ========
   //
@@ -276,15 +210,14 @@ service : () -> {
   // Return the total number of registered streams;
   nStreams : () -> (nat) query;
 
-  streamStatus: (IdSelector) ->
-    (vec
-      record {
+  streamStatus : (IdSelector) -> (
+    vec record {
       nat;
       record {
         source : variant { aggregator : principal; internal };
-        closed: bool;
+        closed : bool;
         lastActive : Time;
-        length: nat;
+        length : nat;
       };
     }
   ) query;
@@ -309,17 +242,26 @@ service : () -> {
   // see them as null (an unknown error to them).
   txStatus : (vec GlobalId) -> (vec GidStatus) query;
 
-  state : (record {
-    accounts: opt IdSelector;
-    ftSupplies: opt IdSelector;
-    remoteAccounts: opt RemoteSelector;
-    virtualAccounts: opt IdSelector;
-  }) ->
-    (record {
-      accounts: vec record { SubId; AccountState };
-      ftSupplies: vec record { AssetId; FtSupply };
-      remoteAccounts: vec record { RemoteId; opt record { AccountState; Time } };
-      virtualAccounts: vec record { VirId; opt record { AccountState; SubId; Time } };
-    }) query;
+  state : (
+    record {
+      accounts : opt IdSelector;
+      ftSupplies : opt IdSelector;
+      remoteAccounts : opt RemoteSelector;
+      virtualAccounts : opt IdSelector;
+    }
+  ) -> (
+    record {
+      accounts : vec record { SubId; AccountState };
+      ftSupplies : vec record { AssetId; FtSupply };
+      remoteAccounts : vec record {
+        RemoteId;
+        opt record { AccountState; Time };
+      };
+      virtualAccounts : vec record {
+        VirId;
+        opt record { AccountState; SubId; Time };
+      };
+    }
+  ) query;
 
 };

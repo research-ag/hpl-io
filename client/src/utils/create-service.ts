@@ -1,13 +1,19 @@
 import { Principal } from '@dfinity/principal';
 import { IDL } from '@dfinity/candid';
-import { Actor } from '@dfinity/agent';
-import { createHttpAgent } from './create-http-agent';
+import { ActorMethodMappedWithExtras, HplActor, HplAgent } from '../delegates/hpl-agent';
+import { ActorSubclass } from '@dfinity/agent';
 
 export const createService: <T>(
   canisterId: Principal | string,
   idl: IDL.InterfaceFactory,
   network: 'ic' | 'local',
-) => Promise<T> = async (canisterId, idl, network) => {
-  const agent = await createHttpAgent(network, { retryTimes: 5 });
-  return Actor.createActor(idl, { agent, canisterId });
+) => Promise<ActorSubclass<ActorMethodMappedWithExtras<T>> & HplActor> = async (canisterId, idl, network) => {
+  const agent = new HplAgent({
+    host: network == 'ic' ? 'https://ic0.app' : 'http://127.0.0.1:4943',
+    retryTimes: 5,
+  });
+  if (network === 'local') {
+    await agent.fetchRootKey();
+  }
+  return HplActor.createActor(idl, { agent, canisterId });
 };

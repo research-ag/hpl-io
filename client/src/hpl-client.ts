@@ -9,6 +9,7 @@ import { AccountRef, TxInput } from '../candid/aggregator';
 import { sleep } from './utils/sleep.util';
 import { HplError } from './hpl-error';
 import { FeeMode } from './types';
+import { CallExtraData } from './delegates/hpl-agent';
 
 export type SimpleTransferStatusKey = 'queued' | 'forwarding' | 'forwarded' | 'processed';
 
@@ -109,21 +110,25 @@ export class HPLClient {
     amount: number | BigInt | 'max',
     feeMode: FeeMode | null = null,
     memo: Array<Uint8Array | number[]> = [],
-  ): Promise<{ requestId: RequestId; commit: () => Promise<GlobalId> }> {
-    const { requestId, call: commit } = await aggregator.prepareUpdateRequest<[[TxInput]], [GlobalId]>(
+  ): Promise<{ requestId: RequestId; commit: () => Promise<[GlobalId, bigint]> }> {
+    const { requestId, call: commit } = await aggregator.prepareUpdateRequest<[[TxInput]], [[GlobalId], CallExtraData]>(
       'submitAndExecute',
       [this._txInputFromRawArgs(from, to, asset, amount, feeMode, memo)],
     );
     return {
       requestId,
       commit: async () => {
-        const result = await commit();
-        return result[0];
+        const [result, callExtra] = await commit();
+        return [result[0], callExtra.canisterTimestamp];
       },
     };
   }
 
-  pollTx(aggregator: AggregatorDelegate, txId: GlobalId): Observable<SimpleTransferStatus> {
+  pollTx(
+    aggregator: AggregatorDelegate,
+    txId: GlobalId,
+    submissionTimestamp: BigInt = 0n,
+  ): Observable<SimpleTransferStatus> {
     const subj: Subject<SimpleTransferStatus> = new Subject<SimpleTransferStatus>();
     let interrupted = false;
     let lastStatus: SimpleTransferStatus = { status: 'queued', txId, statusPayload: null! };
@@ -137,26 +142,30 @@ export class HPLClient {
         statusPayload: { info: msg },
       });
     let pollingState = 'aggregator';
+    let ledgerBatchTimestamp: bigint | null = null;
 
     // polls aggregator until it responds with "other" status; controls polling state.
     const pollAggregator = async (getInterrupted: () => boolean) => {
-      // sometimes it is possible that txStatus will be answered by fallen-behind replica
-      // in this case we can catch not possible otherwise error "Not yet issued".
-      // we ignore up to 20 such errors
-      let notYetIssuedCounter = 0;
       let counter = 0;
       while (!getInterrupted()) {
         counter++;
         try {
           logInfo(`Retrieving status from aggregator (attempt #${counter})`);
-          const txStatus = await aggregator.loggedSingleTxStatus(txId, ({ code, canisterError }, goingToRetry) => {
-            logInfo(
-              `Poll error: Aggregator returned code ${code}, error: ${canisterError} (attempt #${counter}). Retry query? ${goingToRetry}`,
-            );
-          });
+          const [txStatus, _] = await Promise.race([
+            new Promise(r => setTimeout(() => r([null, 0n]), 5000)) as Promise<[null, bigint]>,
+            aggregator.timestampedSingleTxStatus(txId, ({ code, canisterError }, goingToRetry) => {
+              logInfo(
+                `Poll error: Aggregator returned code ${code}, error: ${canisterError} (attempt #${counter}). Retry query? ${goingToRetry}`,
+              );
+            }),
+          ]);
           // while we were waiting to response, the polling could've been already interrupted by ledger polling or externally
           if (getInterrupted()) {
             return;
+          }
+          // if query call was stopped by 5 seconds timeout
+          if (txStatus === null) {
+            continue;
           }
           let status: SimpleTransferStatus = null!;
           if (txStatus.status == 'queued') {
@@ -171,20 +180,23 @@ export class HPLClient {
               subj.next(status);
             }
             pollingState = 'both';
-          } else {
+          } else if (txStatus.status == 'other') {
+            ledgerBatchTimestamp = txStatus.lastLedgerTimestamp;
             logInfo(`Aggregator responded with state "forwarded" (attempt #${counter})`);
-            status = { status: 'forwarded', txId };
+            status = { status: 'forwarded', txId, statusPayload: { ledgerTimestamp: txStatus.lastLedgerTimestamp } };
             subj.next(status);
             pollingState = 'final';
+          } else {
+            throw new Error(`Unexpected status response from aggregator: "${(txStatus as any).status}"`);
           }
         } catch (e) {
           if (
-            notYetIssuedCounter < 20 &&
             e instanceof HplError &&
             e.errorKey == 'CanisterReject' &&
-            e.errorPayload == 'Not yet issued'
+            e.errorPayload == 'Not yet issued' &&
+            Number((e as HplError).callExtra?.canisterTimestamp || 0) <= Number(submissionTimestamp)
           ) {
-            notYetIssuedCounter++;
+            // pass
           } else {
             throw e;
           }
@@ -204,40 +216,41 @@ export class HPLClient {
 
     // polls ledger until it responds with "processed" status
     const pollLedger = async (getInterrupted: () => boolean) => {
-      // sometimes it is possible that txStatus will be answered by fallen-behind replica
-      // in this case we can catch not possible otherwise status "awaited", even after aggregator reported "other".
-      // we ignore up to 20 such errors
-      let finalCallsCounter = 0;
       let counter = 0;
       while (!getInterrupted()) {
         if (pollingState === 'aggregator') {
           await sleep(50);
           continue;
-        } else if (pollingState === 'final') {
-          finalCallsCounter++;
         }
         counter++;
         logInfo(`Retrieving status from ledger (attempt #${counter})`);
-        const ledgerStatus = await this.ledger.loggedSingleTxStatus(txId, ({ code, canisterError }, goingToRetry) => {
-          logInfo(
-            `Poll error: Ledger returned code ${code}, error: ${canisterError} (attempt #${counter}). Retry query? ${goingToRetry}`,
-          );
-        });
+        const [ledgerStatus, timestamp] = await Promise.race([
+          new Promise(r => setTimeout(() => r([null, 0n]), 5000)) as Promise<[null, bigint]>,
+          this.ledger.timestampedSingleTxStatus(txId, ({ code, canisterError }, goingToRetry) => {
+            logInfo(
+              `Poll error: Ledger returned code ${code}, error: ${canisterError} (attempt #${counter}). Retry query? ${goingToRetry}`,
+            );
+          }),
+        ]);
         // while we were waiting to response, the polling could've been already interrupted externally
         if (getInterrupted()) {
           return;
         }
+        // if query call was stopped by 5 seconds timeout
+        if (ledgerStatus === null) {
+          continue;
+        }
         switch (ledgerStatus.status) {
           case 'dropped':
-            logInfo(`Ledger responded with state "dropped" (attempt #${counter})`);
+            logInfo(`Ledger responded with state "dropped" (attempt #${counter}). Ledger timestamp: ${timestamp}`);
             throw new Error('Ledger responded with "dropped" state');
           case 'processed':
-            logInfo(`Ledger responded with state "processed" (attempt #${counter})`);
+            logInfo(`Ledger responded with state "processed" (attempt #${counter}). Ledger timestamp: ${timestamp}`);
             subj.next({ status: 'processed', txId, statusPayload: ledgerStatus.result });
             return;
           case 'awaited':
-            logInfo(`Ledger responded with state "awaited" (attempt #${counter})`);
-            if (finalCallsCounter >= 20) {
+            logInfo(`Ledger responded with state "awaited" (attempt #${counter}). Ledger timestamp: ${timestamp}`);
+            if (pollingState === 'final' && ledgerBatchTimestamp! < timestamp) {
               throw new Error('Ledger responded with "awaited" state, when aggregator already forwarded transaction');
             }
         }

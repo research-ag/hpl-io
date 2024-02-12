@@ -16,17 +16,13 @@ import { AuthClient } from '@dfinity/auth-client';
 import { runOrPickupSimpleTransfer, TX_HISTORY_KEY, TxHistoryEntry } from './services/simple-transfer';
 import SimpleTransfer from './components/SimpleTransfer';
 import MultiQuery from './components/MultiQuery';
-import IdSelectorInput, { IdSelector } from './components/IdSelectorInput';
-import GidSelectorInput from './components/GidSelectorInput';
+import IdSelectorInput, { IdSelector } from './components/inputs/IdSelectorInput';
+import GidSelectorInput from './components/inputs/GidSelectorInput';
 import { copyToClipboard, logTime, zip } from './utils';
 import { AnonymousIdentity, Identity } from '@dfinity/agent';
 import { Ed25519KeyIdentity } from '@dfinity/identity';
-import RemoteAccountsSelectorInput, { RemoteSelector } from './components/RemoteAccountsSelectorInput';
-
-type NavOption = {
-  label: string;
-  component?: JSX.Element;
-} | 'divider';
+import RemoteAccountsSelectorInput, { RemoteSelector } from './components/inputs/RemoteAccountsSelectorInput';
+import { NavList, NavOption } from './components/util/NavList';
 
 let localStorageUnfinishedItems: [number, TxHistoryEntry][] = [];
 
@@ -52,24 +48,27 @@ loadUnfinishedTxsFromLocalStorage();
 const App: React.FC = () => {
   const [ledgerPrincipal, setLedgerPrincipal] = useState<string>(`${process.env.LEDGER_CANISTER_ID}`);
   const [ledgerPrincipalInput, setLedgerPrincipalInput] = useState<string>(`${process.env.LEDGER_CANISTER_ID}`);
-  const [client] = useState<HPLClient>(new HPLClient(ledgerPrincipal, process.env.DFX_NETWORK as any));
+  const [client, setClient] = useState<HPLClient>(new HPLClient(ledgerPrincipal, process.env.DFX_NETWORK as any));
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [identity, setIdentity] = useState(new AnonymousIdentity());
   useEffect(() => {
     client.setIdentity(identity);
   }, [client, identity]);
+  useEffect(() => {
+    setClient(new HPLClient(ledgerPrincipal, process.env.DFX_NETWORK as any));
+  }, [ledgerPrincipal]);
 
   const [selectedNavItem, setSelectedNavItem] = useState<number>(1);
-  const [log, setLog] = useState<string[]>([
-    `Ledger principal: ${ledgerPrincipal}`,
-  ]);
+  const [log, setLog] = useState<string[]>([`Ledger principal: ${ledgerPrincipal}`]);
   const logContainerRef = useRef<HTMLDivElement>(null); // Ref for the log container element
 
   const appendLogEntry = (logEntry: string) => {
-    setLog((prevLog) => [...prevLog, logEntry]);
+    setLog(prevLog => [...prevLog, logEntry]);
   };
 
-  const wrapCall = <Args extends Array<unknown>>(f: (...args: Args) => Promise<void>): (...args: Args) => Promise<void> => {
+  const wrapCall = <Args extends Array<unknown>>(
+    f: (...args: Args) => Promise<void>,
+  ): ((...args: Args) => Promise<void>) => {
     return async (...args) => {
       try {
         await f(...args);
@@ -102,9 +101,11 @@ const App: React.FC = () => {
   };
 
   const onCreateAssetClicked = async () => {
-    appendLogEntry(`Creating FT (args: ${newFtDecimals}, ${newFtDescription}) .....`);
-    const assetId = await client.ledger.createFungibleToken(newFtDecimals, newFtDescription);
-    appendLogEntry(`FT created. ID: ${assetId}`);
+    await logTime(appendLogEntry, async () => {
+      appendLogEntry(`Creating FT (args: ${newFtDecimals}, ${newFtDescription}) .....`);
+      const assetId = await client.ledger.createFungibleToken(newFtDecimals, newFtDescription);
+      appendLogEntry(`FT created. ID: ${assetId}`);
+    });
   };
 
   const onQueryAssetClicked = async () => {
@@ -162,7 +163,9 @@ const App: React.FC = () => {
     appendLogEntry(`Virtual accounts state:`);
     for (const [id, data] of res) {
       if (data) {
-        appendLogEntry(`${id}: type: ${data.state.type}, balance: ${data.state.balance}, backing subaccount: ${data.backingSubaccountId}, expiration: ${data.expiration}`);
+        appendLogEntry(
+          `${id}: type: ${data.state.type}, balance: ${data.state.balance}, backing subaccount: ${data.backingSubaccountId}, expiration: ${data.expiration}`,
+        );
       } else {
         appendLogEntry(`${id}: null`);
       }
@@ -177,7 +180,9 @@ const App: React.FC = () => {
     appendLogEntry(`Virtual accounts info:`);
     for (const [id, info] of data) {
       if (info) {
-        appendLogEntry(`${id}: type: ${info.type}, asset id: ${info.assetId}, access principal: ${info.accessPrincipal.toText()}`);
+        appendLogEntry(
+          `${id}: type: ${info.type}, asset id: ${info.assetId}, access principal: ${info.accessPrincipal.toText()}`,
+        );
       } else {
         appendLogEntry(`${id}: null`);
       }
@@ -185,11 +190,14 @@ const App: React.FC = () => {
   };
 
   const onQueryRemoteVirtualAccountStateClicked = async () => {
-    const data = (await client.ledger.state({ remoteAccounts: queryRemoteAccountsSelector || { cat: [] } })).remoteAccounts;
+    const data = (await client.ledger.state({ remoteAccounts: queryRemoteAccountsSelector || { cat: [] } }))
+      .remoteAccounts;
     appendLogEntry(`Remote Virtual Account states:`);
     for (const [[p, id], status] of data) {
       if (status) {
-        appendLogEntry(`[account holder: ${p}, account id: ${id}]: balance: ${status.state.balance}, expiration: ${status.expiration}`);
+        appendLogEntry(
+          `[account holder: ${p}, account id: ${id}]: balance: ${status.state.balance}, expiration: ${status.expiration}`,
+        );
       } else {
         appendLogEntry(`[account holder: ${p}, account id: ${id}]: deleted`);
       }
@@ -197,7 +205,7 @@ const App: React.FC = () => {
   };
 
   const onQueryRemoteVirtualAccountInfoClicked = async () => {
-    const data = (await client.ledger.remoteAccountInfo(queryRemoteAccountsSelector || { cat: [] }));
+    const data = await client.ledger.remoteAccountInfo(queryRemoteAccountsSelector || { cat: [] });
     appendLogEntry(`Remote Virtual Account info-s:`);
     for (const [[p, id], status] of data) {
       if (status) {
@@ -212,7 +220,9 @@ const App: React.FC = () => {
     await logTime(appendLogEntry, async () => {
       appendLogEntry(`Deleting virtual account with id ${BigInt(queryAccountId)} .....`);
       const result = await client.ledger.deleteVirtualAccount(BigInt(queryAccountId));
-      appendLogEntry(`Virtual account with id ${queryAccountId} deleted successfully, last seen balance: ${result.balance}`);
+      appendLogEntry(
+        `Virtual account with id ${queryAccountId} deleted successfully, last seen balance: ${result.balance}`,
+      );
     });
   };
 
@@ -231,7 +241,9 @@ const App: React.FC = () => {
     }
     const status = await aggregator.singleTxStatus([BigInt(queryGlobalId0), BigInt(queryGlobalId1)]);
     const statusMsg = JSON.stringify(status, bigIntReplacer);
-    appendLogEntry(`Tx status on aggregator (gid = [${queryGlobalId0}, ${queryGlobalId1}], aggregator principal = ${aggregatorPrincipal}): ${statusMsg}`);
+    appendLogEntry(
+      `Tx status on aggregator (gid = [${queryGlobalId0}, ${queryGlobalId1}], aggregator principal = ${aggregator.canisterPrincipal.toText()}): ${statusMsg}`,
+    );
   };
 
   const onQueryTxLedgerClicked = async () => {
@@ -282,16 +294,20 @@ const App: React.FC = () => {
     const statuses = await client.ledger.streamStatus(queryStreamsSelector);
     appendLogEntry(`Stream stats on ledger:`);
     for (const [id, status] of statuses) {
-      appendLogEntry(`${id}: closed: ${status.closed}; source: ${status.source.type}${status.source.type === 'aggregator' ? ' (' + status.source.principal.toText() + ')' : ''}; length: ${status.length}; lastActive: ${status.lastActive}`);
+      appendLogEntry(
+        `${id}: closed: ${status.closed}; source: ${status.source.type}${
+          status.source.type === 'aggregator' ? ' (' + status.source.principal.toText() + ')' : ''
+        }; length: ${status.length}; lastActive: ${status.lastActive}`,
+      );
     }
   };
 
-  const navOptions: NavOption[] = [
+  const hplNavOptions: NavOption[] = [
     { label: 'Aggregators' },
     {
       label: 'list all',
       component: (
-        <div className='query-input'>
+        <div className="query-input">
           <button onClick={wrapCall(onQueryAggregatorsClicked)}>Query</button>
         </div>
       ),
@@ -299,13 +315,19 @@ const App: React.FC = () => {
     {
       label: 'query stream status',
       component: (
-        <div className='query-input'>
+        <div className="query-input">
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span><b>Aggregator principal:</b></span>
-            <input type='text' placeholder='Aggregator principal' value={aggregatorPrincipal}
-                   onChange={(event) => {
-                     setAggregatorPrincipal(event.target.value);
-                   }} />
+            <span>
+              <b>Aggregator principal:</b>
+            </span>
+            <input
+              type="text"
+              placeholder="Aggregator principal"
+              value={aggregatorPrincipal}
+              onChange={event => {
+                setAggregatorPrincipal(event.target.value);
+              }}
+            />
           </div>
           <button onClick={wrapCall(onQueryAggregatorStreamStatusClicked)}>Query</button>
         </div>
@@ -316,16 +338,27 @@ const App: React.FC = () => {
     {
       label: 'create',
       component: (
-        <div className='query-input'>
+        <div className="query-input">
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span><b>Decimals:</b></span>
-            <input type='number' placeholder='Decimals' value={newFtDecimals}
-                   onChange={(event) => setNewFtDecimals(Number(event.target.value))} />
+            <span>
+              <b>Decimals:</b>
+            </span>
+            <input
+              type="number"
+              placeholder="Decimals"
+              value={newFtDecimals}
+              onChange={event => setNewFtDecimals(Number(event.target.value))}
+            />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span><b>Description:</b></span>
-            <input placeholder='Description' value={newFtDescription}
-                   onChange={(event) => setNewFtDescription(event.target.value)} />
+            <span>
+              <b>Description:</b>
+            </span>
+            <input
+              placeholder="Description"
+              value={newFtDescription}
+              onChange={event => setNewFtDescription(event.target.value)}
+            />
           </div>
           <button onClick={wrapCall(onCreateAssetClicked)}>Register FT Asset</button>
         </div>
@@ -334,10 +367,12 @@ const App: React.FC = () => {
     {
       label: 'total number',
       component: (
-        <div className='query-input'>
-          <button onClick={wrapCall(async () =>
-            appendLogEntry(`Total number of fungible tokens: ${await client.ledger.nFtAssets()}`))
-          }>Query
+        <div className="query-input">
+          <button
+            onClick={wrapCall(async () =>
+              appendLogEntry(`Total number of fungible tokens: ${await client.ledger.nFtAssets()}`),
+            )}>
+            Query
           </button>
         </div>
       ),
@@ -345,7 +380,7 @@ const App: React.FC = () => {
     {
       label: 'query',
       component: (
-        <div className='query-input'>
+        <div className="query-input">
           <IdSelectorInput value={queryAssetsSelector} onOutputChange={setQueryAssetsSelector} />
           <button onClick={wrapCall(onQueryAssetSupplyClicked)}>Query Supply</button>
           <button onClick={wrapCall(onQueryAssetClicked)}>Query Info</button>
@@ -361,10 +396,12 @@ const App: React.FC = () => {
     {
       label: 'total number',
       component: (
-        <div className='query-input'>
-          <button onClick={wrapCall(async () =>
-            appendLogEntry(`Total number of my subaccounts: ${await client.ledger.nAccounts()}`))
-          }>Query
+        <div className="query-input">
+          <button
+            onClick={wrapCall(async () =>
+              appendLogEntry(`Total number of my subaccounts: ${await client.ledger.nAccounts()}`),
+            )}>
+            Query
           </button>
         </div>
       ),
@@ -372,7 +409,7 @@ const App: React.FC = () => {
     {
       label: 'query',
       component: (
-        <div className='query-input'>
+        <div className="query-input">
           <IdSelectorInput value={queryAccountsSelector} onOutputChange={setQueryAccountsSelector} />
           <button onClick={() => wrapCall(onQuerySubaccountStateClicked)('My ', client.ledger)}>Query State</button>
           <button onClick={() => wrapCall(onQuerySubaccountInfoClicked)('My ', client.ledger)}>Query Info</button>
@@ -392,11 +429,15 @@ const App: React.FC = () => {
     {
       label: 'delete',
       component: (
-        <div className='query-input'>
-          <input type='number' placeholder='Virtual Account ID' value={queryAccountId}
-                 onChange={(event) => {
-                   setQueryAccountId(Number(event.target.value));
-                 }} />
+        <div className="query-input">
+          <input
+            type="number"
+            placeholder="Virtual Account ID"
+            value={queryAccountId}
+            onChange={event => {
+              setQueryAccountId(Number(event.target.value));
+            }}
+          />
           <button onClick={wrapCall(onDeleteVirtualAccountClicked)}>Delete</button>
         </div>
       ),
@@ -404,9 +445,12 @@ const App: React.FC = () => {
     {
       label: 'total number',
       component: (
-        <div className='query-input'>
+        <div className="query-input">
           <button
-            onClick={wrapCall(async () => appendLogEntry(`Virtual Accounts amount: ${await client.ledger.nVirtualAccounts()}`))}>Query
+            onClick={wrapCall(async () =>
+              appendLogEntry(`Virtual Accounts amount: ${await client.ledger.nVirtualAccounts()}`),
+            )}>
+            Query
           </button>
         </div>
       ),
@@ -414,7 +458,7 @@ const App: React.FC = () => {
     {
       label: 'query',
       component: (
-        <div className='query-input'>
+        <div className="query-input">
           <IdSelectorInput value={queryVirtualsSelector} onOutputChange={setQueryVirtualsSelector} />
           <button onClick={wrapCall(onQueryVirtualAccountStateClicked)}>Query State</button>
           <button onClick={wrapCall(onQueryVirtualAccountInfoClicked)}>Query Info</button>
@@ -446,14 +490,16 @@ const App: React.FC = () => {
     {
       label: 'total number',
       component: (
-        <div className='query-input'>
-          <button onClick={async () => {
-            try {
-              appendLogEntry(`Total number of admin subaccounts: ${await client.admin.nAccounts()}`);
-            } catch (err) {
-              appendLogEntry(`Error: ${err}`);
-            }
-          }}>Query
+        <div className="query-input">
+          <button
+            onClick={async () => {
+              try {
+                appendLogEntry(`Total number of admin subaccounts: ${await client.admin.nAccounts()}`);
+              } catch (err) {
+                appendLogEntry(`Error: ${err}`);
+              }
+            }}>
+            Query
           </button>
         </div>
       ),
@@ -461,7 +507,7 @@ const App: React.FC = () => {
     {
       label: 'query',
       component: (
-        <div className='query-input'>
+        <div className="query-input">
           <IdSelectorInput value={queryAccountsSelector} onOutputChange={setQueryAccountsSelector} />
           <button onClick={() => wrapCall(onQuerySubaccountStateClicked)('Ledger ', client.admin)}>Query State</button>
           <button onClick={() => wrapCall(onQuerySubaccountInfoClicked)('Ledger ', client.admin)}>Query Info</button>
@@ -473,14 +519,16 @@ const App: React.FC = () => {
     {
       label: 'total number',
       component: (
-        <div className='query-input'>
-          <button onClick={async () => {
-            try {
-              appendLogEntry(`Total number of streams: ${await client.ledger.nStreams()}`);
-            } catch (err) {
-              appendLogEntry(`Error: ${err}`);
-            }
-          }}>Query
+        <div className="query-input">
+          <button
+            onClick={async () => {
+              try {
+                appendLogEntry(`Total number of streams: ${await client.ledger.nStreams()}`);
+              } catch (err) {
+                appendLogEntry(`Error: ${err}`);
+              }
+            }}>
+            Query
           </button>
         </div>
       ),
@@ -488,9 +536,11 @@ const App: React.FC = () => {
     {
       label: 'query',
       component: (
-        <div className='query-input'>
+        <div className="query-input">
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span><b>Stream id-s:</b></span>
+            <span>
+              <b>Stream id-s:</b>
+            </span>
             <IdSelectorInput value={queryStreamsSelector} onOutputChange={setQueryStreamsSelector} />
           </div>
           <button onClick={wrapCall(onQueryLedgerStreamsClicked)}>Query</button>
@@ -506,33 +556,56 @@ const App: React.FC = () => {
     {
       label: 'query aggregator',
       component: (
-        <div className='query-input'>
+        <div className="query-input">
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span><b>Aggregator principal:</b></span>
+            <span>
+              <b>Aggregator principal:</b>
+            </span>
             <div>
-              <input type='checkbox' id='autoDetectAggregatorCheckbox' checked={aggregatorPrincipalAutoDetect}
-                     onClick={() => setAggregatorPrincipalAutoDetect(!aggregatorPrincipalAutoDetect)} />
-              <label htmlFor='autoDetectAggregatorCheckbox'>Auto-detect</label>
+              <input
+                type="checkbox"
+                id="autoDetectAggregatorCheckbox"
+                checked={aggregatorPrincipalAutoDetect}
+                onClick={() => setAggregatorPrincipalAutoDetect(!aggregatorPrincipalAutoDetect)}
+              />
+              <label htmlFor="autoDetectAggregatorCheckbox">Auto-detect</label>
             </div>
-            {!aggregatorPrincipalAutoDetect &&
-              <input type='text' placeholder='Aggregator principal' value={aggregatorPrincipal}
-                     onChange={(event) => {
-                       setAggregatorPrincipal(event.target.value);
-                     }} />}
+            {!aggregatorPrincipalAutoDetect && (
+              <input
+                type="text"
+                placeholder="Aggregator principal"
+                value={aggregatorPrincipal}
+                onChange={event => {
+                  setAggregatorPrincipal(event.target.value);
+                }}
+              />
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span><b>Global id (0):</b></span>
-            <input type='number' placeholder='Global id (0)' value={queryGlobalId0}
-                   onChange={(event) => {
-                     setQueryGlobalId0(Number(event.target.value));
-                   }} />
+            <span>
+              <b>Global id (0):</b>
+            </span>
+            <input
+              type="number"
+              placeholder="Global id (0)"
+              value={queryGlobalId0}
+              onChange={event => {
+                setQueryGlobalId0(Number(event.target.value));
+              }}
+            />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span><b>Global id (1):</b></span>
-            <input type='number' placeholder='Global id (1)' value={queryGlobalId1}
-                   onChange={(event) => {
-                     setQueryGlobalId1(Number(event.target.value));
-                   }} />
+            <span>
+              <b>Global id (1):</b>
+            </span>
+            <input
+              type="number"
+              placeholder="Global id (1)"
+              value={queryGlobalId1}
+              onChange={event => {
+                setQueryGlobalId1(Number(event.target.value));
+              }}
+            />
           </div>
           <button onClick={wrapCall(onQueryTxAggregatorClicked)}>Query</button>
         </div>
@@ -554,13 +627,17 @@ const App: React.FC = () => {
         <div
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '1rem', rowGap: '1rem' }}>
           <h3>Last seen status object:</h3>
-          <span style={{
-            wordBreak: 'normal',
-            textAlign: 'left',
-            whiteSpace: 'break-spaces',
-          }}>{JSON.stringify(v, bigIntReplacer, '\t')}</span>
-          <button
-            onClick={() => onPickupTxClicked(k, v)}>{v.lastSeenStatus === 'pickAggregator' ? 'Re-submit' : 'Poll result'}</button>
+          <span
+            style={{
+              wordBreak: 'normal',
+              textAlign: 'left',
+              whiteSpace: 'break-spaces',
+            }}>
+            {JSON.stringify(v, bigIntReplacer, '\t')}
+          </span>
+          <button onClick={() => onPickupTxClicked(k, v)}>
+            {v.lastSeenStatus === 'pickAggregator' ? 'Re-submit' : 'Poll result'}
+          </button>
           <button onClick={() => onDeleteTxClicked(k)}>Delete from storage</button>
         </div>
       ),
@@ -575,7 +652,7 @@ const App: React.FC = () => {
           onSuccess: () => {
             resolve();
           },
-          onError: (error) => {
+          onError: error => {
             reject(error);
           },
         });
@@ -616,20 +693,19 @@ const App: React.FC = () => {
     }
   };
 
-  const handleNavItemClick = (index: number) => {
-    setSelectedNavItem(index);
-  };
-
   const renderComponent = (): JSX.Element | undefined => {
-    if (!(navOptions[selectedNavItem] as any)?.component) {
-      let index = selectedNavItem - 1;
-      while (!(navOptions[index] as any)?.component && index > 1) {
-        index--;
+    const render = (navoptions: NavOption[], selectedIndex: number, setter: (x: number) => void) => {
+      if (!(navoptions[selectedIndex] as any)?.component) {
+        let index = selectedIndex - 1;
+        while (!(navoptions[index] as any)?.component && index > 1) {
+          index--;
+        }
+        setter(index);
+        return (navoptions[index] as any).component;
       }
-      setSelectedNavItem(index);
-      return (navOptions[index] as any).component;
-    }
-    return (navOptions[selectedNavItem] as any).component;
+      return (navoptions[selectedIndex] as any).component;
+    };
+    return render(hplNavOptions, selectedNavItem, setSelectedNavItem);
   };
 
   useEffect(() => {
@@ -640,45 +716,35 @@ const App: React.FC = () => {
     }
   }, [log]);
 
-  const handleLedgerPrincipalInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setLedgerPrincipalInput(event.target.value);
-    if (client && client.ledgerPrincipal.toString() === event.target.value) {
-      return;
-    }
-    try {
-      Principal.fromText(event.target.value);
-      setLedgerPrincipal(event.target.value);
-      appendLogEntry(`Ledger principal: ${event.target.value}`);
-    } catch (err) {
-      // pass
-    }
-  };
-
   const clearLog = () => {
     setLog([]);
   };
 
   return (
-    <div className='App'>
-      <div className='navigation-panel'>
-        <ul>
-          {navOptions.map((option, index) => (
-            option === 'divider'
-              ? <div key={index} className='divider' />
-              : (!!option.component ? <li
-                key={index}
-                className={selectedNavItem === index ? 'active' : ''}
-                onClick={() => handleNavItemClick(index)}
-              >
-                {option.label}
-              </li> : <h3 key={index}>{option.label}</h3>)
-          ))}
-        </ul>
+    <div className="App">
+      <div className="navigation-panel">
+        <NavList navOptions={hplNavOptions} selectedNavItem={selectedNavItem} onClick={setSelectedNavItem}></NavList>
       </div>
-      <div className='right-component'>
-        <div className='input-container'>
+      <div className="right-component">
+        <div className="input-container">
           <h3>Ledger principal: </h3>
-          <input type='text' value={ledgerPrincipalInput} onChange={handleLedgerPrincipalInputChange} />
+          <input
+            type="text"
+            value={ledgerPrincipalInput}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+              setLedgerPrincipalInput(event.target.value);
+              if (client && client.ledgerPrincipal.toString() === event.target.value) {
+                return;
+              }
+              try {
+                Principal.fromText(event.target.value);
+                setLedgerPrincipal(event.target.value);
+                appendLogEntry(`Ledger principal: ${event.target.value}`);
+              } catch (err) {
+                // pass
+              }
+            }}
+          />
         </div>
         <div
           style={{ display: 'flex', flexDirection: 'column', rowGap: '1rem', padding: '1rem', alignItems: 'stretch' }}>
@@ -692,17 +758,19 @@ const App: React.FC = () => {
           </div>
           <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}>
             <span>Seed principal:</span>
-            <input type='text' onChange={(e) => onSeedInput(e.target.value)} />
+            <input type="text" onChange={e => onSeedInput(e.target.value)} />
           </div>
           <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}>
-            <span><b>Me: {identity.getPrincipal().toText()}</b></span>
+            <span>
+              <b>Me: {identity.getPrincipal().toText()}</b>
+            </span>
             <button onClick={() => copyToClipboard(identity.getPrincipal().toText())}>Copy</button>
           </div>
         </div>
         {renderComponent()}
-        <div className='divider' />
-        <div className='log-component'>
-          <div className='log-header'>
+        <div className="divider" />
+        <div className="log-component">
+          <div className="log-header">
             <h3>LOG</h3>
             <button onClick={clearLog}>Clear</button>
           </div>

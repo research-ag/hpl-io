@@ -1,149 +1,4 @@
-// TxInput describes a transaction. Currently there is only one transaction
-// type, `ftTransfer`. In the future new transaction types will be introduced.
-//
-// The information in TxInput can be seen as _instructions_ to carry out a
-// transaction rather than the transaction itself. When processed, the
-// instructions will lead to an actual transaction. A full description of the
-// resulting transaction can, in certain cases, require more information than
-// what was specified in the intructions. For example, TxInput can specify a
-// `max` amount which will be translated to the real amount available only at
-// processing time. As another example, the sender's principal is not in TxInput
-// because it is implicitly specified as the "caller" who submits the TxInput.
-// But it would of course be required in a complete description of the
-// transaction.
-type TxInput = variant { ftTransfer : FtTransfer };
-
-// FtTransfer describes a fungible token transfer from one account to another.
-// `from` is the sending account.
-// `to` is the receiving account.
-// `assetId` is the id of the token to be transferred.
-// `amount` is the number of tokens to be transferred.
-// Specifying `max` as `amount` transfers the entire available amount in the
-// sending account.
-// `memo` is a vector of blobs which can be used to attach metadata that is
-// relevant for the sender or receiver.
-//
-// Backward compatibility:
-// New optional fields will be added to the record in the future such as, for
-// example, `nonce` and `fee` fields.
-// A `nonce` field, when set, enforces idempotency.
-// A `fee` field, when set, selects one of multiple fee modes.
-type FtTransfer = record {
-  from : AccountRef;
-  to : AccountRef;
-  asset : AssetId;
-  amount : variant { amount : nat; max };
-  feeMode : opt variant { senderPays; receiverPays };
-  memo : vec blob;
-};
-
-type AssetId = nat;
-
-// The sending or receiving account can be an account, virtual account, or
-// the "mint".
-// `sub` specifies the account of the caller with the given account id.
-// `vir` specifies the virtual account of the given owner `principal` with the
-// given `nat` id. The caller must have access to that virtual account or the
-// transfer will fail.
-// `mint` specifies the "mint" of the given asset id. Sending to `mint` burns
-// tokens. Sending from `mint` mints tokens. In both cases, the caller must be
-// the controller of the given asset id or the transfer will fail. Only the
-// controller can mint and burn tokens.
-type AccountRef = variant {
-  sub : nat;
-  vir : record { principal; nat };
-  mint;
-};
-
-// Timestamp measured in nanoseconds since the beginning of the Unix epoch
-// We only need timestamps in the future, hence negative values are not allowed.
-type Time = nat64;
-
-// Transactions are assigned a globally unique id (gid) when they are submitted
-// to the aggregator. The global id is valid forever and will never be re-used
-// for a different transaction, even if the transaction fails in processing.
-//
-// Backward compatibilty: The internal structure of GlobalId is not expected to
-// change. If it does then it is advisable to introduce enitrely new functions
-// that return or process the new type of global id.
-type GlobalId = record { nat; nat };
-
-// GidStatus describes the progress made on the processing of a submitted
-// transaction. The aggregator can reports on the progress made with resprect to
-// forwarding the transaction to the ledger. Only the ledger knows if the
-// processing of the transactions succeeded or failed.
-//
-// See README.md for further explanation of the status states.
-//
-// State `queued` contains the transaction's distance from the head of the queue
-// which can be used as an indication for the remaining time before it gets
-// forwarded.
-//
-// State `other` contains the last timestamp received from the ledger. If the
-// client subsequently queries the ledger for the same gid then it should ignore
-// any response that is older than this timestamp.
-//
-// State `other` contains a variant that is either #settled or
-// #settledIfIssuedHere. #settled means that the aggregator knows for sure that
-// the gid has been settled at the ledger. The caller can rely on this fact in
-// all circumstances. #settledIfIssuedHere means that the aggregator knows that
-// the gid has been settled at the ledger or it was issued by a different
-// aggregator. In other words, if it was issued by this aggregator then it is
-// guaranteed to be settled. But the caller can only conclude that the gid is
-// settled if the caller is certain to have asked the right aggregator (the one
-// who issued it). If the caller is not certain about that then it cannot
-// conclude anything.
-//
-// Backwards compatibility: In the future, additional data can be returned
-// inside each of the variant cases of GidStatus. Hence clients do not
-// need to wrap the variant inside an opt.
-//
-// In case `queued`, for example, we can add a second nat which represents
-// the distance from the head counted in the unit "weight" (bytes). This
-// provides additional information to the client and would allowe the client to
-// better predict when the transaction will be forwarded.
-//
-// As another example, we can add additional information to the `other` case.
-// Often the aggregator has additional information on the gid.  It may know, for
-// example, if the transaction is processed or dropped.  Newer clients can then
-// use that information.
-//
-// While extending existing cases is allowed, adding entirely new cases would
-// break existing clients. Therefore, a new case can only be introduced if a new
-// function is introduced at the same time _and_ the new case can only be
-// reached by calling the new function. This guarantees that old clients cannot
-// receive new cases (because they don't call the new function).
-//
-// For example, the case `canceled` and a function `cancelTx` can be introduced.
-// The state `canceled` cannot be reached without calling `cancelTx`.
-type GidStatus = variant {
-  queued : record { nat };
-  pending : record {};
-  other : record { Time; variant { settled; settledIfIssuedHere } };
-};
-
-// StreamStatus describes that status of a sender's stream, including the associated queue.
-// 
-// id: id which the ledger uses to identify the stream.
-//
-// received: number of txs that the aggregator knows have been received by the
-// ledger = stream position of the first pending tx.
-//
-// sent: number of txs that have been sent to the ledger, i.e. the ones that
-// have been received plus the ones that are in flight = stream position of
-// the first queued tx.
-//
-// length: number of all txs that have been added to the stream, i.e. the ones
-// that have been sent plus the ones that are queued = stream position of the
-// next tx that is added to the stream.
-//
-// At all times: received <= sent <= length
-type StreamStatus = record {
-  id : nat;
-  received : nat;
-  sent : nat;
-  length : nat;
-};
+import "../agg-types.did";
 
 // The aggregator's ingress interface consists of two functions:
 // * submitAndExecute
@@ -158,7 +13,7 @@ type StreamStatus = record {
 // stopping/stopped are assumed to be transitional states of an upgrade cycle
 // and are therefore temporary. Bugs in the receiver code are assumed to get
 // fixed eventually through an upgrade and are therefore temporary as well.
-// 
+//
 // A throw (CANISTER_REJECT) means that there is an error on the sender side of
 // the call. For example, the sender has passed invalid arguments or was not
 // authorized to make the call. This is a bug on the sender side because the
@@ -186,7 +41,7 @@ type AggregatorIngressAPI = service {
   // The function traps (CANISTER_ERROR) if:
   //   * The internal queue is full (back pressure)
   // The reject message will contain the reason in descriptive text format.
-  // 
+  //
   // The function is subject to ingress message inspection. Any call that would
   // throw for any of the above reasons will be rejected during inspection.
   // This will lead to an http 500 error. The caller will, unfortunately, not be
@@ -213,7 +68,7 @@ type AggregatorIngressAPI = service {
   // - trap (CANISTER_ERROR) if the aggregator does not have a current stream id
   txStatus : (vec GlobalId) -> (vec GidStatus) query;
 
-  // Return the status of the current stream(s). 
+  // Return the status of the current stream(s).
   //
   // In the current implementation the aggregator has at most one stream open at
   // any point in time. However, the interface is designed to support multiple
@@ -223,17 +78,17 @@ type AggregatorIngressAPI = service {
   // If the aggregator knows that a certain stream has been closed by the ledger
   // then, but only then, can it prune the stream from the list. This list is
   // returned by this function.
-  // 
+  //
   // In the current implementation the aggregator only receives a new stream id
   // when the previous one (in fact all previous ones) have been closed by the
   // ledger. Hence, the returned list has at most one element.
-  // 
+  //
   // After first install or re-install the aggregator traps on this function
   // (returns CANISTER_ERROR). The aggregator needs to communciate with the
   // ledger at least once before it can guarantee correctness of the returned
   // list.
-  streamStatus : () -> (vec StreamStatus) query; 
+  streamStatus : () -> (vec StreamStatus) query;
 
 };
-  
+
 service : () -> AggregatorIngressAPI;
