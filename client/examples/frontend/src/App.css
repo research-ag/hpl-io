@@ -7,6 +7,11 @@
   align-items: stretch;
 }
 
+.errored-input {
+  border-color: red;
+  outline-color: red;
+}
+
 .navigation-panel {
   max-width: 50%;
   flex-grow: 0;
@@ -81,6 +86,32 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* loader */
+.lds-dual-ring {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+}
+.lds-dual-ring:after {
+  content: " ";
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 2px;
+  border-radius: 50%;
+  border: 1.5px solid #aaa;
+  border-color: #aaa transparent #aaa transparent;
+  animation: lds-dual-ring 1.2s linear infinite;
+}
+@keyframes lds-dual-ring {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 

@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import AccountRefSelector from './inputs/AccountRefSelector';
-import { FeeMode, HPLClient, TransferAccountReference } from '@research-ag/hpl-client';
+import { FeeMode, HPLClient, OwnersDelegate, TransferAccountReference } from '@research-ag/hpl-client';
 import { runOrPickupSimpleTransfer } from '../services/simple-transfer';
 import { logTime } from '../utils';
 
 interface SimpleTransferProps {
   client: HPLClient;
+  owners: () => Promise<OwnersDelegate>;
   onLogEntry: (logEntry: string) => void; // Callback function to pass log entries to the parent component
 }
 
-const SimpleTransfer: React.FC<SimpleTransferProps> = ({ client, onLogEntry }) => {
+const SimpleTransfer: React.FC<SimpleTransferProps> = ({ client, owners, onLogEntry }) => {
   const [from, setFrom] = useState<TransferAccountReference>({ type: 'mint' });
   const [to, setTo] = useState<TransferAccountReference>({ type: 'mint' });
   const [assetId, setAssetId] = useState(0);
@@ -72,13 +73,13 @@ const SimpleTransfer: React.FC<SimpleTransferProps> = ({ client, onLogEntry }) =
         <span>
           <b>From:</b>
         </span>
-        <AccountRefSelector onChange={handleFromChange} />
+        <AccountRefSelector owners={owners} onChange={handleFromChange} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <span>
           <b>To:</b>
         </span>
-        <AccountRefSelector onChange={handleToChange} />
+        <AccountRefSelector owners={owners} onChange={handleToChange} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <span>

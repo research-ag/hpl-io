@@ -1,6 +1,5 @@
 import { Principal } from '@dfinity/principal';
 import { IDL } from '@dfinity/candid';
-import { createService } from '../utils/create-service';
 import { ActorSubclass, Identity } from '@dfinity/agent';
 import {
   CallInterceptor,
@@ -23,16 +22,28 @@ export type DelegateCallOptions = {
   retryErrorCallback?: QueryRetryInterceptorErrorCallback;
 };
 
+export const defaultIcAgent: HplAgent = new HplAgent({
+  host: 'https://ic0.app',
+  retryTimes: 5,
+});
+
 export abstract class Delegate<T> {
   protected constructor(
     protected readonly idl: IDL.InterfaceFactory,
     protected readonly _canisterPrincipal: Principal | string,
     public readonly network: 'ic' | 'local',
   ) {
-    this._canisterPromise = createService<T>(_canisterPrincipal, idl, network).then(s => {
-      this._service = s;
-      return s;
-    });
+    this._canisterPromise = (async () => {
+      let agent = defaultIcAgent;
+      if (network === 'local') {
+        agent = new HplAgent({
+          host: 'http://127.0.0.1:4943',
+          retryTimes: 5,
+        });
+        await agent.fetchRootKey();
+      }
+      return HplActor.createActor(idl, { agent, canisterId: _canisterPrincipal });
+    })();
   }
 
   public get canisterPrincipal(): Principal {

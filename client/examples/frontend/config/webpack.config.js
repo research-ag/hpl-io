@@ -86,25 +86,17 @@ const hasJsxRuntime = (() => {
 })();
 
 function initCanisterEnv() {
-  let localCanisters = {};
-  let prodCanisters = {};
+  let canisterConfig = {};
   try {
-    localCanisters = require(path.resolve("../../../deploy/.dfx/local/canister_ids.json"));
+    canisterConfig = require(path.resolve("canister_ids.json"));
   } catch (error) {
-    console.log("No local canister_ids.json found. Continuing production");
-  }
-  try {
-    prodCanisters = require(path.resolve("../../../deploy/canister_ids.json"));
-  } catch (error) {
-    console.log("No production canister_ids.json found. Continuing with local");
+    console.warn("No local canister_ids.json found");
   }
 
   const network =
       process.env.DFX_NETWORK ||
       (process.env.NODE_ENV === "production" ? "ic" : "local");
   console.log('Building for network ' + network);
-
-  const canisterConfig = network === "local" ? localCanisters : prodCanisters;
 
   return {
     DFX_NETWORK: network,

@@ -13,7 +13,7 @@ export const bigIntPrincipalReplacer = (key: string, value: any): any => {
 
 export const zip: <T, K>(a: T[], b: K[]) => [T, K][] = (a, b) => {
   return Array(Math.max(a.length, b.length)).fill(null).map((_, i) => [a[i], b[i]]);
-}
+};
 
 export const copyToClipboard = (textToCopy: string) => {
   // Create a temporary input element to copy text to the clipboard
@@ -41,4 +41,24 @@ export const unpackVariant = <T>(
   }
   const key = Object.keys(variant as any)[0] as keyof T;
   return [key, variant[key as keyof T]] as any;
+};
+
+export const packLinkCode = (ownerId: bigint, virId: bigint): string => {
+  const ownerStr = ownerId.toString(16);
+  const accountStr = virId.toString(16);
+  const vidIdLenStr = (accountStr.length - 1).toString(16);
+  if (vidIdLenStr.length != 1) {
+    throw new Error(`Cannot craft link code for virtual account id ${vidIdLenStr}`);
+  }
+  return `${vidIdLenStr}${ownerStr}${accountStr}`;
+};
+
+export const unpackLinkCode = (linkCode: string): { ownerId: bigint, virId: bigint } => {
+  const virIdLen = parseInt(linkCode.substring(0, 1), 16) + 1;
+  const ownerId = BigInt(parseInt(linkCode.substring(1, linkCode.length - virIdLen), 16));
+  const virId = BigInt(parseInt(linkCode.substring(linkCode.length - virIdLen), 16));
+  if (packLinkCode(ownerId, virId) !== linkCode) {
+    throw new Error(`Can not parse link code ${linkCode} correctly`);
+  }
+  return { ownerId, virId };
 };

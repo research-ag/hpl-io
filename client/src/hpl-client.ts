@@ -10,6 +10,7 @@ import { sleep } from './utils/sleep.util';
 import { HplError } from './hpl-error';
 import { FeeMode } from './types';
 import { CallExtraData } from './delegates/hpl-agent';
+import { OwnersDelegate } from './delegates/owners-delegate';
 
 export type SimpleTransferStatusKey = 'queued' | 'forwarding' | 'forwarded' | 'processed';
 
@@ -85,6 +86,13 @@ export class HPLClient {
 
   async createAggregatorDelegate(principal: Principal | string): Promise<AggregatorDelegate> {
     const delegate = new AggregatorDelegate(principal, this.network);
+    const identity = this.externalIdentity || new AnonymousIdentity();
+    await delegate.replaceIdentity(identity);
+    return delegate;
+  }
+
+  async createOwnersDelegate(principal: Principal | string): Promise<OwnersDelegate> {
+    const delegate = new OwnersDelegate(principal, this.network);
     const identity = this.externalIdentity || new AnonymousIdentity();
     await delegate.replaceIdentity(identity);
     return delegate;

@@ -7,6 +7,7 @@ import {
   HPLClient,
   LedgerAdminDelegate,
   LedgerDelegate,
+  OwnersDelegate,
 } from '@research-ag/hpl-client';
 import OpenSubaccount from './components/OpenSubaccount';
 import OpenVirtualAccount from './components/OpenVirtualAccount';
@@ -18,7 +19,7 @@ import SimpleTransfer from './components/SimpleTransfer';
 import MultiQuery from './components/MultiQuery';
 import IdSelectorInput, { IdSelector } from './components/inputs/IdSelectorInput';
 import GidSelectorInput from './components/inputs/GidSelectorInput';
-import { copyToClipboard, logTime, zip } from './utils';
+import { copyToClipboard, logTime, packLinkCode, zip } from './utils';
 import { AnonymousIdentity, Identity } from '@dfinity/agent';
 import { Ed25519KeyIdentity } from '@dfinity/identity';
 import RemoteAccountsSelectorInput, { RemoteSelector } from './components/inputs/RemoteAccountsSelectorInput';
@@ -91,6 +92,15 @@ const App: React.FC = () => {
   const [queryGlobalId1, setQueryGlobalId1] = useState(0);
   const [queryLedgerTxSelector, setQueryLedgerTxSelector] = useState<[bigint, bigint][] | undefined>();
   const [queryStreamsSelector, setQueryStreamsSelector] = useState<IdSelector | undefined>();
+
+  let _owners: OwnersDelegate | null = null;
+  const owners: () => Promise<OwnersDelegate> = async () => {
+    if (!_owners) {
+      _owners = await client.createOwnersDelegate(process.env.OWNERS_CANISTER_ID as string);
+      await _owners!.replaceIdentity(identity);
+    }
+    return _owners!;
+  };
 
   const onQueryAggregatorsClicked = async () => {
     const result = await client.ledger.aggregators();
@@ -187,6 +197,16 @@ const App: React.FC = () => {
         appendLogEntry(`${id}: null`);
       }
     }
+  };
+
+  const onQueryVirtualAccountLinkCodeClicked = async () => {
+    const delegate = await owners();
+    appendLogEntry(`Obtaining owner ID...`);
+    const owner = await delegate.lookup(identity.getPrincipal());
+    if (!owner) {
+      throw new Error(`Owner id not found`);
+    }
+    appendLogEntry(`Link code: ${packLinkCode(owner, BigInt(queryAccountId))}`);
   };
 
   const onQueryRemoteVirtualAccountStateClicked = async () => {
@@ -465,6 +485,22 @@ const App: React.FC = () => {
         </div>
       ),
     },
+    {
+      label: 'get link code',
+      component: (
+        <div className="query-input">
+          <input
+            type="number"
+            placeholder="Virtual Account ID"
+            value={queryAccountId}
+            onChange={event => {
+              setQueryAccountId(Number(event.target.value));
+            }}
+          />
+          <button onClick={wrapCall(onQueryVirtualAccountLinkCodeClicked)}>Get link code</button>
+        </div>
+      ),
+    },
     'divider',
     { label: 'Remote accounts' },
     {
@@ -551,7 +587,7 @@ const App: React.FC = () => {
     { label: 'Transactions' },
     {
       label: 'make transfer',
-      component: <SimpleTransfer client={client} onLogEntry={appendLogEntry} />,
+      component: <SimpleTransfer client={client} owners={owners} onLogEntry={appendLogEntry} />,
     },
     {
       label: 'query aggregator',
