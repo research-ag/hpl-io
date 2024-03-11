@@ -36,9 +36,9 @@
   ],
   "homepage": "https://github.com/research-ag/hpl#readme",
   "devDependencies": {
-    "@dfinity/agent": "0.20.2",
-    "@dfinity/candid": "0.20.2",
-    "@dfinity/principal": "0.20.2",
+    "@dfinity/agent": "1.0.1",
+    "@dfinity/candid": "1.0.1",
+    "@dfinity/principal": "1.0.1",
     "@types/jest": "^29.5.1",
     "@types/text-encoding": "^0.0.36",
     "esbuild": "^0.17.18",
@@ -51,9 +51,9 @@
     "whatwg-fetch": "^3.6.2"
   },
   "peerDependencies": {
-    "@dfinity/agent": "0.20.2",
-    "@dfinity/candid": "0.20.2",
-    "@dfinity/principal": "0.20.2"
+    "@dfinity/agent": "1.0.1",
+    "@dfinity/candid": "1.0.1",
+    "@dfinity/principal": "1.0.1"
   },
   "dependencies": {
     "rxjs": "^7.8.1"
