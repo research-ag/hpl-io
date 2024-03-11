@@ -1,0 +1,3 @@
+import "../../did/owners/apis/ingress.did";
+
+service : () -> OwnersIngressAPI;

@@ -1,0 +1,267 @@
+import "../ledger-types.did";
+
+service : () -> {
+  // register a new fungible token, the caller becomes a controller of it
+  createFungibleToken : (nat8, text) -> (
+    variant {
+      ok : AssetId;
+      err : opt variant {
+        FeeError;
+        NoSpace;
+      };
+    }
+  );
+
+  // ======== QUERIES (account management) ========
+  //
+  // These queries are non-public, i.e. they only return information about an
+  // account or virtual account to one allowed principal (usually the owner).
+  // If called by a different principal then the functions trap.
+
+  // Return the info of the caller's own accounts given by SubId-s.
+  //
+  // Return value is:
+  // - trap (CANISTER_ERROR) if caller is unknown
+  // - throw (CANISTER_REJECT) if caller is known but subId is unknown
+  //
+  // Backwards compatibility:
+  // The caller receives null if a new case (other than "ft") is introduced
+  // and used in the return value that the caller does not yet know about.
+  accountInfo : (IdSelector) -> (
+    vec record {
+      SubId;
+      opt AccountType;
+    }
+  ) query;
+
+  // Return the permanent information of virtual accounts.
+  // Note: This function is called by the owner of the virtual accounts.
+  //
+  // Return value is:
+  // - trap (CANISTER_ERROR) if caller is unknown
+  // - throw (CANISTER_REJECT) if caller is known but virId is unknown or deleted
+  virtualAccountInfo : (IdSelector) -> (
+    vec record {
+      VirId;
+      opt record { AccountType; principal };
+    }
+  ) query;
+
+  // Return the number of accounts of the caller.
+  //
+  // Return value is:
+  // - trap (CANISTER_ERROR) if caller is unknown
+  nAccounts : () -> (nat) query;
+
+  // Return the number of virtual accounts of the caller.
+  //
+  // Return value is:
+  // - trap (CANISTER_ERROR) if caller is unknown
+  nVirtualAccounts : () -> (nat) query;
+
+  // ======== UPDATES (account management) ========
+  //
+  // If called for an account by a caller who is not the owner then the
+  // functions trap.
+
+  // Open n new accounts for the caller.
+  // If the caller is unknown then the caller gets registered.
+  //
+  // Return value is:
+  // - ok : index of first newly openend account
+  // - err NoSpaceForPrincipal if caller is unknown an cannot be registered
+  // - err NoSpaceForSubaccount if caller has too many subaccounts already
+  // - err InvalidArguments with text:
+  //   - "UnknownFtAsset" if the variant case in AccountType is unknown
+  //
+  // Backwards compatibility:
+  // AccountType is a variant and new cases can be introduced.
+  openAccounts : (
+    nat, // number of accounts to open
+    AccountType, // type of all the new accounts
+  ) -> (
+    variant {
+      ok : record {
+        first : SubId; // index of first newly created account
+      };
+      err : opt variant {
+        NoSpaceForPrincipal;
+        NoSpaceForSubaccount;
+        InvalidArguments : text;
+      };
+    }
+  );
+
+  // Open one new virtual account for the caller.
+  //
+  // Return value is:
+  // - trap (CANISTER_ERROR) if caller is unknown
+  // - ok : index of the new virtual account
+  // - err NoSpaceForAccount if caller has too many virtual accounts already
+  // - err InvalidArguments with text:
+  //   - "UnknownSubaccount" if new backing account is unknown
+  //   - "MismatchInAsset" if new backing account does not match the asset id
+  //   - "InvalidExpirationTime" if expiration time lies in the past
+  //
+  // Backwards compatibility:
+  // The state inside the arguments is a variant and new cases reflecting new
+  // account types can be introduced.
+  openVirtualAccount : (
+    AccountType, // permanent virtual account type
+    principal, // permanent access principal
+    AccountState, // initial virtual account state
+    SubId, // initial backing account
+    Time // initial expiration
+  ) -> (
+    variant {
+      ok : record {
+        id : VirId; // index of the newly opened virtual account
+      };
+      err : opt variant {
+        NoSpaceForAccount;
+        InvalidArguments : text;
+      };
+    }
+  );
+
+  // Delete a virtual account of the caller.
+  //
+  // Return value is:
+  // - trap (CANISTER_ERROR) if caller is unknown
+  // - ok
+  // - err DeletedVirtualAccount if virtual account has already been deleted
+  // - err InvalidArguments with text:
+  //   - "UnknownVirtualAccount" if virtual account id is not known
+  deleteVirtualAccount : (VirId) -> (
+    variant {
+      ok : AccountState;
+      err : opt variant {
+        DeletedVirtualAccount; // means had already been deleted before
+        InvalidArguments : text;
+      };
+    }
+  );
+
+  // Update the state of a virtual account of the caller.
+  //
+  // Return value is:
+  // - trap (CANISTER_ERROR) if caller is unknown
+  // - ok : new balance and the delta that was the result of the change
+  // - err DeletedVirtualAccount if virtual account has already been deleted
+  // - err InsufficientFunds if a decrement operation was not possible
+  // - err InvalidArguments with text:
+  //   - "UnknownVirtualAccount" if virtual account id is not known
+  //   - "UnknownSubaccount" if new backing account is unknown
+  //   - "MismatchInAsset" if new backing account does not match the asset id
+  //   - "InvalidExpirationTime" if expiration time lies in the past
+  //
+  // Backwards compatibility:
+  // The state inside the arguments is a variant and new cases reflecting new
+  // account types can be introduced.
+  updateVirtualAccount : (
+    VirId,
+    record {
+      state : opt variant {
+        ft_set : nat;
+        ft_inc : nat;
+        ft_dec : nat;
+      };
+      backingAccount : opt SubId;
+      expiration : opt Time;
+    },
+  ) -> (
+    variant {
+      ok : variant {
+        ft : record { nat; int }; // balance (nat), delta (int)
+      };
+      err : opt variant {
+        DeletedVirtualAccount;
+        InsufficientFunds;
+        InvalidArguments : text;
+      };
+    }
+  );
+
+  // ======== QUERIES (other) ========
+
+  // Return the inverted fraction of fee. Return value N means that the
+  // fee for transaction would be `transfer_amount/N` (rounded up) tokens
+  feeRatio : () -> (nat) query;
+
+  // Return the static information for fungible tokens.
+  //
+  // Return value is:
+  // - throw (CANISTER_REJECT) if asset id is unknown
+  // - the static information record of the token
+  //
+  // Backwards compatibility:
+  // New fields can be added to the record. A caller who does not know about
+  // them will not see them.
+  ftInfo : (IdSelector) -> (
+    vec record {
+      AssetId;
+      record { controller : principal; decimals : nat8; description : text };
+    }
+  ) query;
+
+  // Return the list of aggregators (their principals).
+  aggregators : () -> (vec record { principal; nat }) query;
+
+  // Return the total number of registered streams;
+  nStreams : () -> (nat) query;
+
+  streamStatus : (IdSelector) -> (
+    vec record {
+      nat;
+      record {
+        source : variant { aggregator : principal; internal };
+        closed : bool;
+        lastActive : Time;
+        length : nat;
+      };
+    }
+  ) query;
+
+  // Return the status of a transactions given by their global id (gid).
+  //
+  // Return value is:
+  // - throw (CANISTER_REJECT) if the stream id inside the gid has not yet been
+  // issued
+  // - (status, null) if the status is not processed
+  // - (processed, result) if the status is processed
+  //
+  // Backwards compatibility:
+  // In the future, additional data can be returned inside each of the variant
+  // cases of GidStatus. No new cases should be introduced because that would
+  // break existing clients.
+  // New variant cases other than ftTransfer can be introduced inside TxResult.
+  // Client code that does not know them would see null but that is not
+  // expected to happen because client code only calls txStatus for a tx that
+  // it itself submitted.
+  // New processing errors can be introduced and existing client code would
+  // see them as null (an unknown error to them).
+  txStatus : (vec GlobalId) -> (vec GidStatus) query;
+
+  state : (
+    record {
+      accounts : opt IdSelector;
+      ftSupplies : opt IdSelector;
+      remoteAccounts : opt RemoteSelector;
+      virtualAccounts : opt IdSelector;
+    }
+  ) -> (
+    record {
+      accounts : vec record { SubId; AccountState };
+      ftSupplies : vec record { AssetId; FtSupply };
+      remoteAccounts : vec record {
+        RemoteId;
+        opt record { AccountState; Time };
+      };
+      virtualAccounts : vec record {
+        VirId;
+        opt record { AccountState; SubId; Time };
+      };
+    }
+  ) query;
+
+};

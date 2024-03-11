@@ -1,0 +1,23 @@
+// Timestamp measured in nanoseconds since the beginning of the Unix epoch
+// We only need timestamps in the future, hence negative values are not allowed.
+type Time = nat64;
+
+// An account is referenced by (owner, subid).
+// `owner` is a principal, `subid` a nat.
+type SubId = nat;
+
+// A virtual account is referenced by (owner, virid).
+// `owner` is a principal, `virid` a nat.
+type VirId = nat;
+type RemoteId = record { principal; VirId };
+
+type AssetId = nat;
+
+// Transactions are assigned a globally unique id (gid) when they are submitted
+// to the aggregator. The global id is valid forever and will never be re-used
+// for a different transaction, even if the transaction fails in processing.
+//
+// Backward compatibilty: The internal structure of GlobalId is not expected to
+// change. If it does then it is advisable to introduce enitrely new functions
+// that return or process the new type of global id.
+type GlobalId = record { nat; nat };

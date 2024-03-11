@@ -1,0 +1,70 @@
+import "../ledger-types.did";
+
+type LedgerAdminAPI = service {
+
+  // Return the immutable data associated with the selected ledger accounts. The
+  // immutable data of an account consists of:
+  // - the type (the ft asset id).
+  //
+  // Return value is:
+  // - throw (CANISTER_REJECT) if any of the selected SubIds is unknown
+  // - a vector of pairs (account id, account type)
+  //
+  // Note: The IdSelector can be crafted in a way the the retuned vector contain
+  // repetitions. For example, one can repeat `id = 0` multiple times in the
+  // selector or one can include `id = 0` as well as `idRange = record { 0; 1}`.
+  // In both cases the account with id 0 will appear twice in the return value.
+  // It is the responsibility of the caller to handle repetitions or to avoid
+  // them by crafting the argument correctly.
+  adminAccountInfo : (IdSelector) -> (vec record { SubId; AccountType }) query;
+
+  // Return the number of accounts of the ledger.
+  nAdminAccounts : () -> (nat) query;
+
+  // Atomic query for various mutable states. The functions can be used to query
+  // any combination of account states, virtual account states, remote account
+  // states and token supplies. The accounts and virtual accounts must be ownwed
+  // by the ledger. For the remote accounts the ledger must be the access
+  // principal.
+  //
+  // The arguments are selectors. A null value for a record field means the
+  // empty selector.
+  //
+  // The return value for non-null accounts is:
+  // - throw (CANISTER_REJECT) if any of the selected SubIds is unknown
+  //
+  // The return value for non-null virtual accounts is:
+  // - throw (CANISTER_REJECT) if any of the selected VirIds is unknown
+  // - a null entry in the returned vector if the virtual account has been deleted
+  //
+  // The return value for non-null ftSupplies is:
+  // - throw (CANISTER_REJECT) if any of the selected AssetIds is unknown
+  //
+  // The return value for non-null remote accounts is:
+  // - a null entry in the returned vector if the remote account is unknown, has
+  // been deleted, or the ledger does not have access.
+  adminState : (
+    record {
+      accounts : opt IdSelector;
+      ftSupplies : opt IdSelector;
+      remoteAccounts : opt RemoteSelector;
+      virtualAccounts : opt IdSelector;
+    }
+  ) -> (
+    record {
+      accounts : vec record { SubId; AccountState };
+      ftSupplies : vec record { AssetId; FtSupply };
+      remoteAccounts : vec record {
+        RemoteId;
+        record { AccountState; Time };
+      };
+      virtualAccounts : vec record {
+        VirId;
+        record { AccountState; SubId; Time };
+      };
+    }
+  ) query;
+
+};
+
+service : () -> LedgerAdminAPI;

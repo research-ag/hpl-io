@@ -1,0 +1,6 @@
+import "../owners-types.did";
+
+service : () -> {
+   get: (nat) -> (principal) query;
+   lookup: (principal) -> (opt nat) query;
+};

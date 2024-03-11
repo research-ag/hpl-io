@@ -1,0 +1,3 @@
+import "../types.did";
+
+type OwnerId = nat;

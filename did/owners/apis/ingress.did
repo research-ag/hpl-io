@@ -1,0 +1,8 @@
+import "../owners-types.did";
+
+type OwnersIngressAPI = service {
+   get: (OwnerId) -> (principal) query;
+   lookup: (principal) -> (opt OwnerId) query;
+};
+
+service : () -> OwnersIngressAPI;
