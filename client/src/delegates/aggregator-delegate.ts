@@ -11,7 +11,10 @@ export type TxAggStatus =
   | { status: 'other'; lastLedgerTimestamp: bigint };
 
 export class AggregatorDelegate extends Delegate<AggregatorAPI> {
-  constructor(protected readonly _canisterPrincipal: Principal | string, network: 'ic' | 'local') {
+  constructor(
+    protected readonly _canisterPrincipal: Principal | string,
+    network: 'ic' | 'local',
+  ) {
     super(aggregatorIDLFactory, _canisterPrincipal, network);
   }
 
@@ -54,9 +57,7 @@ export class AggregatorDelegate extends Delegate<AggregatorAPI> {
     retryErrorCallback: QueryRetryInterceptorErrorCallback = null,
   ): Promise<[TxAggStatus, bigint]> {
     const [results, { canisterTimestamp }] = await this.queryWithExtras<[Array<GlobalId>], Array<GidStatus>>(
-      (
-        await this.service
-      ).txStatus,
+      (await this.service).txStatus,
       { retryErrorCallback },
       [id],
     );

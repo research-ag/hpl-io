@@ -52,7 +52,10 @@ export class HPLClient {
     await this.admin.replaceIdentity(identity);
   }
 
-  constructor(public readonly ledgerPrincipal: Principal | string, public readonly network: 'ic' | 'local') {
+  constructor(
+    public readonly ledgerPrincipal: Principal | string,
+    public readonly network: 'ic' | 'local',
+  ) {
     this.ledger = new LedgerDelegate(this.ledgerPrincipal, network);
     this.admin = new LedgerAdminDelegate(this.ledgerPrincipal, network);
   }

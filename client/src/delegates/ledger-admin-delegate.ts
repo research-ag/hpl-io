@@ -12,7 +12,10 @@ import { Delegate } from './delegate';
 import { accountInfoCast, JsAccountInfo, JsAccountState, ledgerStateCast } from './types';
 
 export class LedgerAdminDelegate extends Delegate<LedgerAdminAPI> {
-  constructor(protected readonly _canisterPrincipal: Principal | string, network: 'ic' | 'local') {
+  constructor(
+    protected readonly _canisterPrincipal: Principal | string,
+    network: 'ic' | 'local',
+  ) {
     super(ledgerAdminIDLFactory, _canisterPrincipal, network);
   }
 
@@ -40,9 +43,7 @@ export class LedgerAdminDelegate extends Delegate<LedgerAdminAPI> {
   }> {
     return ledgerStateCast(
       await this.query(
-        (
-          await this.service
-        ).adminState,
+        (await this.service).adminState,
         {},
         {
           ftSupplies: arg.ftSupplies ? [arg.ftSupplies] : [],

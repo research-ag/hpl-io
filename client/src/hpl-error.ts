@@ -7,7 +7,10 @@ export class HplError<T = any> extends Error {
   errorKey: 'SysFatal' | 'SysTransient' | 'DestinationInvalid' | 'CanisterError' | 'CanisterReject' | string;
   errorPayload: any;
 
-  constructor(errObject: T, public readonly callExtra: CallExtraData) {
+  constructor(
+    errObject: T,
+    public readonly callExtra: CallExtraData,
+  ) {
     const [key, payload] = unpackVariant(errObject);
     let errorStr = '#' + (key as string);
     if (payload !== null) {
