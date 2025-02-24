@@ -1,6 +1,6 @@
 # Client module for HPL
 
-TODO add documentation
+A client module for [HPL](https://github.com/research-ag/hpl-io)
 
 # Usage
 
