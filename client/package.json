@@ -1,0 +1,61 @@
+{
+  "name": "@research-ag/hpl-client",
+  "version": "0.0.1",
+  "description": "A client module for HPL API",
+  "main": "dist/cjs/index.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/types/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/research-ag/hpl.git",
+    "directory": "client"
+  },
+  "author": "MR Research",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/research-ag/hpl/issues"
+  },
+  "scripts": {
+    "compile-did": "npm run rm-did && sh scripts/compile-idl-js",
+    "rm-did": "rm -rf ./candid/*.js && rm -rf ./candid/*.ts",
+    "rmdir": "rm -rf ./dist",
+    "ts-declaration": "tsc --emitDeclarationOnly --outDir dist/types",
+    "build": "npm run compile-did && npm run rmdir && mkdir -p dist && cp -R candid dist && node scripts/esbuild.mjs && npm run ts-declaration",
+    "prepack": "npm run build",
+    "test": "jest",
+    "prettier-candid": "prettier --config .prettierrc ./candid --write",
+    "prettier-format": "prettier --config .prettierrc 'src/**/*.ts' --write"
+  },
+  "keywords": [
+    "internet computer",
+    "ic",
+    "dfinity",
+    "HPL",
+    "HPL ledger",
+    "token"
+  ],
+  "homepage": "https://github.com/research-ag/hpl#readme",
+  "devDependencies": {
+    "@dfinity/agent": "1.0.1",
+    "@dfinity/candid": "1.0.1",
+    "@dfinity/principal": "1.0.1",
+    "@types/jest": "^29.5.1",
+    "@types/text-encoding": "^0.0.36",
+    "esbuild": "^0.25.0",
+    "jest": "^29.5.0",
+    "jest-environment-jsdom": "^29.5.0",
+    "prettier": "^2.8.8",
+    "text-encoding": "^0.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.4",
+    "whatwg-fetch": "^3.6.2"
+  },
+  "peerDependencies": {
+    "@dfinity/agent": "1.0.1",
+    "@dfinity/candid": "1.0.1",
+    "@dfinity/principal": "1.0.1"
+  },
+  "dependencies": {
+    "rxjs": "^7.8.1"
+  }
+}

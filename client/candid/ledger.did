@@ -1,0 +1,3 @@
+import "../../did/ledger/apis/ingress.did";
+
+service : () -> LedgerIngressAPI;

@@ -1,0 +1,161 @@
+import "../types.did";
+
+// The sending or receiving account can be an account, virtual account, or
+// the "mint".
+// `sub` specifies the account of the caller with the given account id.
+// `vir` specifies the virtual account of the given owner `principal` with the
+// given `nat` id. The caller must have access to that virtual account or the
+// transfer will fail.
+// `mint` specifies the "mint" of the given asset id. Sending to `mint` burns
+// tokens. Sending from `mint` mints tokens. In both cases, the caller must be
+// the controller of the given asset id or the transfer will fail. Only the
+// controller can mint and burn tokens.
+//
+// Backward compatibility:
+// Since this is an input (i.e. argument), new variant cases can later be added.
+// Old client will simply never supply the new cases.
+type AccountRef = variant {
+  sub : SubId;
+  vir : RemoteId;
+  mint;
+};
+
+// TxInput describes a transaction. Currently there is only one transaction
+// type, `ftTransfer`. In the future new transaction types will be introduced.
+//
+// The information in TxInput can be seen as _instructions_ to carry out a
+// transaction rather than the transaction itself. When processed, the
+// instructions will lead to an actual transaction. A full description of the
+// resulting transaction can, in certain cases, require more information than
+// what was specified in the intructions. For example, TxInput can specify a
+// `max` amount which will be translated to the real amount available only at
+// processing time. As another example, the sender's principal is not in TxInput
+// because it is implicitly specified as the "caller" who submits the TxInput.
+// But it would of course be required in a complete description of the
+// transaction.
+type TxInput = variant { ftTransfer : FtTransfer };
+
+// FtTransfer describes a fungible token transfer from one account to another.
+// `from` is the sending account.
+// `to` is the receiving account.
+// `assetId` is the id of the token to be transferred.
+// `amount` is the number of tokens to be transferred.
+// Specifying `max` as `amount` transfers the entire available amount in the
+// sending account.
+// `memo` is a vector of blobs which can be used to attach metadata that is
+// relevant for the sender or receiver.
+//
+// Backward compatibility:
+// New fields can be added to the record in the future as long as they are
+// optional. Old client code will not specify the new field and it will be set to
+// null by Candid.
+// For example, we can later introduce an optional `nonce` field that can
+// be used to enforce idempotency if desired. The default is `null` which
+// means idempotency is not enforced.
+// As another example, we can later introduce an optional `fee` field that
+// can be used to select one from several fee modes if desired. The default
+// is `null` which means to use the ledger's default fee mode.
+type FtTransfer = record {
+  from : AccountRef;
+  to : AccountRef;
+  asset : AssetId;
+  amount : variant {
+    amount : nat;
+    max;
+  };
+  feeMode : opt variant { senderPays; receiverPays };
+  memo : vec blob;
+};
+
+// GidStatus describes the progress made on the processing of a submitted
+// transaction. The aggregator can reports on the progress made with resprect to
+// forwarding the transaction to the ledger. Only the ledger knows if the
+// processing of the transactions succeeded or failed.
+//
+// We call this type `GidStatus` rather than `TxStatus` to emphasize that the
+// status is not dependent on the TxInput and that the status reveals no
+// information about the TxInput. This is different from querying the ledger for
+// transaction status. The ledger can return success or failure which depends on
+// the actual TxInput, not only the gid. When we query the aggregator for
+// GidStatus we learn about the progress of communication between aggregator and
+// ledger which is only a function of gid, not the TxInput.
+//
+// See README.md for further explanation of the status states.
+//
+// State `queued` contains the transaction's distance from the head of the queue
+// which can be used as an indication for the remaining time before it gets
+// forwarded.
+//
+// State `other` contains the last timestamp received from the ledger. If the
+// client subsequently queries the ledger for the same gid then it should ignore
+// any response that is older than this timestamp.
+//
+// State `other` contains a variant that is either #settled or
+// #settledIfIssuedHere. #settled means that the aggregator knows for sure that
+// the gid has been settled at the ledger. The caller can rely on this fact in
+// all circumstances. #settledIfIssuedHere means that the aggregator knows that
+// the gid has been settled at the ledger or it was issued by a different
+// aggregator. In other words, if it was issued by this aggregator then it is
+// guaranteed to be settled. But the caller can only conclude that the gid is
+// settled if the caller is certain to have asked the right aggregator (the one
+// who issued it). If the caller is not certain about that then it cannot
+// conclude anything.
+//
+// In case `queued`, for example, we can add a second nat which represents
+// the distance from the head counted in the unit "weight" (bytes). This
+// provides additional information to the client and would allowe the client to
+// better predict when the transaction will be forwarded.
+//
+// As another example, we can add additional information to the `other` case.
+// Often the aggregator has additional information on the gid.  It may know, for
+// example, if the transaction is processed or dropped.  Newer clients can then
+// use that information.
+//
+// While extending existing cases is allowed, adding entirely new cases would
+// break existing clients. Therefore, a new case can only be introduced if a new
+// function is introduced at the same time _and_ the new case can only be
+// reached by calling the new function. This guarantees that old clients cannot
+// receive new cases (because they don't call the new function).
+//
+// For example, the case `canceled` and a function `cancelTx` can be introduced.
+// The state `canceled` cannot be reached without calling `cancelTx`.
+//
+// Backwards compatibility:
+// In the future, additional data can be returned in each of the variant cases
+// by adding field to the records.
+// In the case `queued`, for example, we can add a second nat which represents
+// the distance from the head counted in the unit "weight" (bytes). This
+// provides additional information to the client and would allow the client to
+// better predict when the transaction will be forwarded.
+// As another example, we can add additional information to the `other`.
+// Often the aggregator has additional information on the gid.
+// It may know, for example, if the transaction is processed or dropped.
+// Clients do not need to wrap the variant inside an opt.
+type GidStatus = variant {
+  queued : record { nat };
+  pending : record {};
+  other : record { Time; variant { settled; settledIfIssuedHere } };
+};
+
+// StreamStatus describes that status of a sender's stream, including the associated queue.
+//
+// id: id which the ledger uses to identify the stream.
+//
+// received: number of txs that the aggregator knows have been received by the
+// ledger = stream position of the first pending tx.
+//
+// sent: number of txs that have been sent to the ledger, i.e. the ones that
+// have been received plus the ones that are in flight = stream position of
+// the first queued tx.
+//
+// length: number of all txs that have been added to the stream, i.e. the ones
+// that have been sent plus the ones that are queued = stream position of the
+// next tx that is added to the stream.
+//
+// At all times: received <= sent <= length
+type StreamStatus = record {
+  id : nat;
+  received : nat;
+  sent : nat;
+  length : nat;
+};
