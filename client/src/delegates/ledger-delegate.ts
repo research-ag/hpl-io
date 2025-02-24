@@ -31,7 +31,10 @@ export type StreamStatus = {
 };
 
 export class LedgerDelegate extends Delegate<LedgerAPI> {
-  constructor(protected readonly _canisterPrincipal: Principal | string, network: 'ic' | 'local') {
+  constructor(
+    protected readonly _canisterPrincipal: Principal | string,
+    network: 'ic' | 'local',
+  ) {
     super(ledgerIDLFactory, _canisterPrincipal, network);
   }
 
@@ -160,9 +163,7 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
     retryErrorCallback: QueryRetryInterceptorErrorCallback = null,
   ): Promise<[TxLedStatus, bigint]> {
     const [res, callExtraData] = await this.queryWithExtras<[Array<GlobalId>], Array<GidStatus>>(
-      (
-        await this.service
-      ).txStatus,
+      (await this.service).txStatus,
       { retryErrorCallback },
       [id],
     );
@@ -218,9 +219,7 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
   }> {
     return ledgerStateCast(
       await this.query(
-        (
-          await this.service
-        ).state,
+        (await this.service).state,
         {},
         {
           ftSupplies: arg.ftSupplies ? [arg.ftSupplies] : [],

@@ -75,8 +75,8 @@ export const runOrPickupSimpleTransfer = async (
       if (submitRequestId) {
         logCallback('Retrieving response by request id...');
         const requestId = new Uint8Array(submitRequestId!.split(',') as any as number[]).buffer as RequestId;
-        const [responseBytes, timestamp] = await pollForResponseWithTimestamp((await aggregator.agent)!, aggregator.canisterPrincipal, requestId, maxAttempts(5));
-        const [gids, _] = await ((await aggregator.service).parseResponse('submitAndExecute', responseBytes, null, timestamp));
+        const { reply, canisterTimestamp } = await pollForResponseWithTimestamp((await aggregator.agent)!, aggregator.canisterPrincipal, requestId, maxAttempts(5));
+        const [gids, _] = await ((await aggregator.service).parseResponse('submitAndExecute', reply, null, canisterTimestamp));
         txId = gids[0];
       } else {
         const { requestId, commit } = await client.prepareSimpleTransfer(aggregator, ...txArgs);

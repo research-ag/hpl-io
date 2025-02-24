@@ -1,20 +1,27 @@
 import {
   Actor,
+  ACTOR_METHOD_WITH_CERTIFICATE,
+  ACTOR_METHOD_WITH_HTTP_DETAILS,
   ActorConfig,
   ActorMethod,
   ActorSubclass,
   Agent,
   CallConfig,
+  Certificate,
+  CreateActorClassOpts,
   CreateCertificateOptions,
   FunctionWithArgsAndReturn,
   getDefaultAgent,
   HttpDetailsResponse,
+  lookupResultToBuffer,
   polling,
   QueryCallRejectedError,
   SubmitResponse,
   UpdateCallRejectedError,
+  v2ResponseBody,
+  v3ResponseBody,
 } from '@dfinity/agent';
-import { IDL } from '@dfinity/candid';
+import { bufFromBufLike, IDL } from '@dfinity/candid';
 import { Principal } from '@dfinity/principal';
 import { AgentError } from '@dfinity/agent/lib/cjs/errors';
 import { defaultStrategy } from '@dfinity/agent/lib/cjs/polling';
@@ -41,7 +48,10 @@ const metadataSymbol = Symbol.for('ic-agent-metadata');
 // Adds extra call info to responses, implements lazy call
 export class HplActor extends Actor {
   // FIXME wrong types
-  public static createActorClass(interfaceFactory: IDL.InterfaceFactory): ActorConstructor<any> {
+  public static createActorClass(
+    interfaceFactory: IDL.InterfaceFactory,
+    options?: CreateActorClassOpts,
+  ): ActorConstructor<any> {
     const service = interfaceFactory({ IDL });
 
     class CanisterActor extends HplActor {
@@ -65,6 +75,13 @@ export class HplActor extends Actor {
         });
 
         for (const [methodName, func] of service._fields) {
+          if (options?.httpDetails) {
+            func.annotations.push(ACTOR_METHOD_WITH_HTTP_DETAILS);
+          }
+          if (options?.certificate) {
+            func.annotations.push(ACTOR_METHOD_WITH_CERTIFICATE);
+          }
+
           this[methodName] = _createActorMethod(this as any, methodName, func, config.blsVerify);
         }
       }
@@ -141,21 +158,102 @@ export class HplActor extends Actor {
 
     return {
       requestId,
-      call: async (): Promise<Res> => {
-        const { response } = await call();
-        if (!response.ok || response.body /* IC-1462 */) {
-          throw new UpdateCallRejectedError(cid, methodName, requestId, response);
+      call: async (): Promise<any> => {
+        const { requestId, response, requestDetails } = await call();
+        let reply: ArrayBuffer | undefined;
+        let certificate: Certificate | undefined;
+        if (response.body && (response.body as v3ResponseBody).certificate) {
+          if (agent.rootKey == null) {
+            throw new Error('Agent is missing root key');
+          }
+          const cert = (response.body as v3ResponseBody).certificate;
+          certificate = await Certificate.create({
+            certificate: bufFromBufLike(cert),
+            rootKey: agent.rootKey,
+            canisterId: Principal.from(canisterId),
+            blsVerify,
+          });
+          const path = [new TextEncoder().encode('request_status'), requestId];
+          const status = new TextDecoder().decode(lookupResultToBuffer(certificate.lookup([...path, 'status'])));
+
+          switch (status) {
+            case 'replied':
+              reply = lookupResultToBuffer(certificate.lookup([...path, 'reply']));
+              break;
+            case 'rejected': {
+              // Find rejection details in the certificate
+              const rejectCode = new Uint8Array(lookupResultToBuffer(certificate.lookup([...path, 'reject_code']))!)[0];
+              const rejectMessage = new TextDecoder().decode(
+                lookupResultToBuffer(certificate.lookup([...path, 'reject_message']))!,
+              );
+              const error_code_buf = lookupResultToBuffer(certificate.lookup([...path, 'error_code']));
+              const error_code = error_code_buf ? new TextDecoder().decode(error_code_buf) : undefined;
+              throw new UpdateCallRejectedError(
+                cid,
+                methodName,
+                requestId,
+                response,
+                rejectCode,
+                rejectMessage,
+                error_code,
+              );
+            }
+          }
+        } else if (response.body && 'reject_message' in response.body) {
+          // handle v2 response errors by throwing an UpdateCallRejectedError object
+          const { reject_code, reject_message, error_code } = response.body as v2ResponseBody;
+          throw new UpdateCallRejectedError(
+            cid,
+            methodName,
+            requestId,
+            response,
+            reject_code,
+            reject_message,
+            error_code,
+          );
         }
-        const pollStrategy = (pollingStrategyFactory || polling.defaultStrategy)();
-        const [responseBytes, timestamp] = await pollForResponseWithTimestamp(
-          agent,
-          ecid,
-          requestId,
-          pollStrategy,
-          null,
-          blsVerify,
-        );
-        return this.parseResponse(methodName, responseBytes, response as any, timestamp);
+
+        // Fall back to polling if we receive an Accepted response code
+        if (response.status === 202) {
+          const pollStrategy = pollingStrategyFactory!();
+          // Contains the certificate and the reply from the boundary node
+          const response = await pollForResponseWithTimestamp(agent, ecid, requestId, pollStrategy, blsVerify);
+          certificate = response.certificate;
+          reply = response.reply;
+        }
+        const shouldIncludeHttpDetails = func.annotations.includes(ACTOR_METHOD_WITH_HTTP_DETAILS);
+        const shouldIncludeCertificate = func.annotations.includes(ACTOR_METHOD_WITH_CERTIFICATE);
+
+        const httpDetails = { ...response, requestDetails } as HttpDetailsResponse;
+        if (reply !== undefined) {
+          if (shouldIncludeHttpDetails && shouldIncludeCertificate) {
+            return {
+              httpDetails,
+              certificate,
+              result: decodeReturnValue(func.retTypes, reply),
+            } as any;
+          } else if (shouldIncludeCertificate) {
+            return {
+              certificate,
+              result: decodeReturnValue(func.retTypes, reply),
+            };
+          } else if (shouldIncludeHttpDetails) {
+            return {
+              httpDetails,
+              result: decodeReturnValue(func.retTypes, reply),
+            };
+          }
+          return decodeReturnValue(func.retTypes, reply);
+        } else if (func.retTypes.length === 0) {
+          return shouldIncludeHttpDetails
+            ? {
+                httpDetails: response,
+                result: undefined,
+              }
+            : undefined;
+        } else {
+          throw new Error(`Call was returned undefined, but type [${func.retTypes.join(',')}].`);
+        }
       },
     };
   }
@@ -206,7 +304,15 @@ function _createActorMethod(
       const cid = Principal.from(options.canisterId || actor[metadataSymbol].config.canisterId);
       const arg = IDL.encode(func.argTypes, args);
 
-      const result = await agent.query(cid, { methodName, arg });
+      const result = await agent.query(cid, {
+        methodName,
+        arg,
+        effectiveCanisterId: options.effectiveCanisterId,
+      });
+      const httpDetails = {
+        ...result.httpDetails,
+        requestDetails: result.requestDetails,
+      } as HttpDetailsResponse;
 
       switch (result.status) {
         case QueryResponseStatus.Rejected:
@@ -246,34 +352,106 @@ function _createActorMethod(
       const cid = Principal.from(canisterId);
       const ecid = effectiveCanisterId !== undefined ? Principal.from(effectiveCanisterId) : cid;
       const arg = IDL.encode(func.argTypes, args);
-      const { requestId, response } = await agent.call(cid, {
+
+      const { requestId, response, requestDetails } = await agent.call(cid, {
         methodName,
         arg,
         effectiveCanisterId: ecid,
       });
+      let reply: ArrayBuffer | undefined;
+      let certificate: Certificate | undefined;
+      if (response.body && (response.body as v3ResponseBody).certificate) {
+        if (agent.rootKey == null) {
+          throw new Error('Agent is missing root key');
+        }
+        const cert = (response.body as v3ResponseBody).certificate;
+        certificate = await Certificate.create({
+          certificate: bufFromBufLike(cert),
+          rootKey: agent.rootKey,
+          canisterId: Principal.from(canisterId),
+          blsVerify,
+        });
+        const path = [new TextEncoder().encode('request_status'), requestId];
+        const status = new TextDecoder().decode(lookupResultToBuffer(certificate.lookup([...path, 'status'])));
 
-      if (!response.ok || response.body /* IC-1462 */) {
-        throw new UpdateCallRejectedError(cid, methodName, requestId, response);
+        switch (status) {
+          case 'replied':
+            reply = lookupResultToBuffer(certificate.lookup([...path, 'reply']));
+            break;
+          case 'rejected': {
+            // Find rejection details in the certificate
+            const rejectCode = new Uint8Array(lookupResultToBuffer(certificate.lookup([...path, 'reject_code']))!)[0];
+            const rejectMessage = new TextDecoder().decode(
+              lookupResultToBuffer(certificate.lookup([...path, 'reject_message']))!,
+            );
+            const error_code_buf = lookupResultToBuffer(certificate.lookup([...path, 'error_code']));
+            const error_code = error_code_buf ? new TextDecoder().decode(error_code_buf) : undefined;
+            throw new UpdateCallRejectedError(
+              cid,
+              methodName,
+              requestId,
+              response,
+              rejectCode,
+              rejectMessage,
+              error_code,
+            );
+          }
+        }
+      } else if (response.body && 'reject_message' in response.body) {
+        // handle v2 response errors by throwing an UpdateCallRejectedError object
+        const { reject_code, reject_message, error_code } = response.body as v2ResponseBody;
+        throw new UpdateCallRejectedError(
+          cid,
+          methodName,
+          requestId,
+          response,
+          reject_code,
+          reject_message,
+          error_code,
+        );
       }
 
-      const pollStrategy = pollingStrategyFactory();
-      const [responseBytes, timestamp] = await pollForResponseWithTimestamp(
-        agent,
-        ecid,
-        requestId,
-        pollStrategy,
-        blsVerify,
-      );
-      if (responseBytes === undefined && func.retTypes.length != 0) {
+      // Fall back to polling if we receive an Accepted response code
+      if (response.status === 202) {
+        const pollStrategy = pollingStrategyFactory();
+        // Contains the certificate and the reply from the boundary node
+        const response = await pollForResponseWithTimestamp(agent, ecid, requestId, pollStrategy, blsVerify);
+        certificate = response.certificate;
+        reply = response.reply;
+      }
+      const shouldIncludeHttpDetails = func.annotations.includes(ACTOR_METHOD_WITH_HTTP_DETAILS);
+      const shouldIncludeCertificate = func.annotations.includes(ACTOR_METHOD_WITH_CERTIFICATE);
+
+      const httpDetails = { ...response, requestDetails } as HttpDetailsResponse;
+      if (reply !== undefined) {
+        if (shouldIncludeHttpDetails && shouldIncludeCertificate) {
+          return {
+            httpDetails,
+            certificate,
+            result: decodeReturnValue(func.retTypes, reply),
+          };
+        } else if (shouldIncludeCertificate) {
+          return {
+            certificate,
+            result: decodeReturnValue(func.retTypes, reply),
+          };
+        } else if (shouldIncludeHttpDetails) {
+          return {
+            httpDetails,
+            result: decodeReturnValue(func.retTypes, reply),
+          };
+        }
+        return decodeReturnValue(func.retTypes, reply);
+      } else if (func.retTypes.length === 0) {
+        return shouldIncludeHttpDetails
+          ? {
+              httpDetails: response,
+              result: undefined,
+            }
+          : undefined;
+      } else {
         throw new Error(`Call was returned undefined, but type [${func.retTypes.join(',')}].`);
       }
-      return [
-        responseBytes ? decodeReturnValue(func.retTypes, responseBytes) : undefined,
-        {
-          canisterTimestamp: timestamp,
-          httpDetails: response,
-        },
-      ];
     };
   }
 
