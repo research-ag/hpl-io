@@ -15,7 +15,7 @@ import "../ledger-types.did";
 //     state
 // * account management updates:
 //     openAccounts,
-//     openVirtualAccount, deleteVirtualAccount, updateVirtualAccount
+//     openVirtualAccounts, deleteVirtualAccounts, updateVirtualAccounts
 // * token management queries:
 //     ftInfo, nFtAssets
 // * token management updates:
@@ -173,9 +173,9 @@ type LedgerIngressAPI = service {
 
   // === Section: Account management updates
 
-  // Open n new accounts for the caller, all of the same type.
+  // Open one or many new accounts for the caller, of provided types.
   //
-  // Arguments are the number of accounts to open and the type.
+  // Argument is the type per each new subaccount.
   //
   // If the caller is unknown then the caller gets registered.
   //
@@ -185,7 +185,7 @@ type LedgerIngressAPI = service {
   // - err NoSpaceForSubaccount if caller has too many accounts already
   // - err InvalidArguments with text:
   //   - "UnknownFtAsset" if the variant case in AccountType is unknown
-  openAccounts : (nat, AccountType) -> (
+  openAccounts : (vec AccountType) -> (
     variant {
       ok : record { first : SubId };
       err : variant {
@@ -196,9 +196,9 @@ type LedgerIngressAPI = service {
     }
   );
 
-  // Open one new virtual account for the caller.
+  // Open one or many new virtual accounts for the caller.
   //
-  // Arguments are:
+  // Arguments per virtual account to be opened are:
   // - account type (i.e. ft asset id)
   // - access principal
   // - initial virtual account state (i.e. ft asset balance)
@@ -214,21 +214,21 @@ type LedgerIngressAPI = service {
   //
   // Return value is:
   // - throw (CANISTER_REJECT) if caller is unknown
-  // - ok : index of the new virtual account
+  // - ok : index of the first newly opened virtual account
   // - err NoSpaceForAccount if caller has too many virtual accounts already
   // - err InvalidArguments with text:
   //   - "UnknownSubaccount" if backing account is unknown
   //   - "MismatchInAsset" if backing account does not match the specified
   //   AccountType
   //   - "InvalidExpirationTime" if expiration time lies in the past
-  openVirtualAccount : (AccountType, principal, AccountState, SubId, Time) -> (
+  openVirtualAccounts : (vec record { AccountType; principal; AccountState; SubId; Time }) -> (
     variant {
-      ok : record { id : VirId };
+      ok : record { first : VirId };
       err : variant { NoSpaceForAccount; InvalidArguments : text };
     }
   );
 
-  // Delete a virtual account of the caller.
+  // Delete virtual accounts of the caller.
   //
   // Return value is:
   // - throw (CANISTER_REJECT) if caller is unknown
@@ -236,16 +236,16 @@ type LedgerIngressAPI = service {
   // - err DeletedVirtualAccount if virtual account has already been deleted
   // - err InvalidArguments with text:
   //   - "UnknownVirtualAccount" if virtual account id is not known
-  deleteVirtualAccount : (VirId) -> (
+  deleteVirtualAccounts : (vec VirId) -> (
     variant {
-      ok : variant { ft : nat };
+      ok : vec variant { ft : nat };
       err : variant { DeletedVirtualAccount; InvalidArguments : text };
     }
   );
 
-  // Update the state of a virtual account of the caller.
+  // Update the state of a virtual accounts of the caller.
   //
-  // Argument is the virtual account id and the update record.
+  // Argument is the vector of virtual account id and the update record pairs.
   //
   // Update record: We can update the virtual account state, backing account and
   // expiration. A null value for any of those fields means that the existing
@@ -256,7 +256,7 @@ type LedgerIngressAPI = service {
   // Return value is:
   // - throw (CANISTER_REJECT) if caller is unknown
   // - ok : new balance (nat) and the delta (int) that was the result of the
-  // change
+  // change per each virtual account id provided in arguments
   // - err DeletedVirtualAccount if virtual account has already been deleted
   // - err InsufficientFunds if a decrement operation was not possible
   // - err InvalidArguments with text:
@@ -265,19 +265,31 @@ type LedgerIngressAPI = service {
   //   - "MismatchInAsset" if new backing account does not match the account
   //   type
   //   - "InvalidExpirationTime" if expiration time lies in the past
-  updateVirtualAccount : (
-    VirId,
-    record {
-      state : opt variant { ft_set : nat; ft_inc : nat; ft_dec : nat };
-      backingAccount : opt SubId;
-      expiration : opt Time;
-    },
+  updateVirtualAccounts : (
+    vec record {
+      VirId;
+      record {
+        state : opt variant { ft_set : nat; ft_inc : nat; ft_dec : nat };
+        backingAccount : opt SubId;
+        expiration : opt Time;
+      };
+    }
   ) -> (
     variant {
-      ok : variant { ft : record { nat; int } };
+      ok : vec variant { ft : record { nat; int } };
       err : variant {
         DeletedVirtualAccount;
         InsufficientFunds;
+        InvalidArguments : text;
+      };
+    }
+  );
+
+  emptyVirtualAccounts : (vec VirId) -> (
+    variant {
+      ok : vec int;
+      err : variant {
+        DeletedVirtualAccount;
         InvalidArguments : text;
       };
     }
@@ -303,6 +315,8 @@ type LedgerIngressAPI = service {
       record { controller : principal; decimals : nat8; description : text };
     }
   ) query;
+
+  ftSwapRate : (IdSelector) -> (vec record { AssetId; float64 }) query;
 
   // Return the number of asset ids issued for fungible tokens.
   nFtAssets : () -> (nat) query;

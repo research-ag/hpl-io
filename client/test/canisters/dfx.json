@@ -1,0 +1,17 @@
+{
+  "canisters": {
+    "ledger": {
+      "wasm": "./ledger.wasm",
+      "candid": "./ledger.did",
+      "type": "custom"
+    },
+    "aggregator": {
+      "wasm": "./aggregator.wasm",
+      "candid": "./aggregator.did",
+      "type": "custom"
+    }
+  },
+  "defaults": {},
+  "dfx": "0.24.3",
+  "version": 1
+}

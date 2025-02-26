@@ -162,7 +162,7 @@ export class HplActor extends Actor {
 }
 
 export const decodeReturnValue = (types: IDL.Type[], msg: ArrayBuffer) => {
-  const returnValues = IDL.decode(types, Buffer.from(msg));
+  const returnValues = IDL.decode(types, new Uint8Array(msg));
   switch (returnValues.length) {
     case 0:
       return undefined;

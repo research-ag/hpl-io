@@ -1,0 +1,698 @@
+type VirtualAccountUpdateObject = 
+ record {
+   backingAccount: opt SubaccountId;
+   expiration: opt Expiration;
+   state: opt StateUpdate;
+ };
+type VirtualAccountId = nat;
+type TxResult = 
+ variant {
+   failure: TxFailureError;
+   success: TxOutput;
+ };
+type TxProcessingError = 
+ variant {
+   DeletedVirtualAccount;
+   IncorrectOwnerId;
+   InsufficientFunds;
+   MismatchInAsset;
+   MismatchInRemotePrincipal;
+   NotAController;
+   SuspendedVirtualAccount;
+   UnknownFtAsset;
+   UnknownPrincipal;
+   UnknownSubaccount;
+   UnknownVirtualAccount;
+   UnsupportedFeeMode: variant {
+                         FractionWrongFlowsAmount;
+                         SenderPaysMax;
+                       };
+ };
+type TxOutput = variant {ftTransfer: record {
+                                       amount: nat;
+                                       fee: nat;
+                                     };};
+type TxInput = variant {
+                 v1: record {
+                       map: vec ContributionInput;
+                       memo: vec blob;
+                     };};
+type TxFailureError = variant {
+                        ftTransfer:
+                         variant {
+                           DeletedVirtualAccount;
+                           InsufficientFunds;
+                           InvalidArguments: text;
+                         };};
+type Tx = 
+ record {
+   feeMode: FeeMode;
+   flows: vec Flow;
+   map: vec principal;
+   mapIds: vec opt nat;
+   memo: vec blob;
+ };
+type SubmitError = 
+ variant {
+   IncorrectOwnerIndex;
+   NoSpace;
+   NonZeroAssetSum;
+   TooLargeAssetId;
+   TooLargeFtQuantity;
+   TooLargeMemo;
+   TooLargeSubaccountId;
+   TooLargeVirtualAccountId;
+   TooManyContributions;
+   TooManyFlows;
+   UnsupportedMaxFlows;
+ };
+type SubmitAndExecuteError = 
+ variant {
+   DeletedVirtualAccount;
+   IncorrectOwnerId;
+   IncorrectOwnerIndex;
+   InsufficientFunds;
+   MismatchInAsset;
+   MismatchInRemotePrincipal;
+   NonZeroAssetSum;
+   NotAController;
+   NotApproved;
+   SuspendedVirtualAccount;
+   TooLargeAssetId;
+   TooLargeFtQuantity;
+   TooLargeMemo;
+   TooLargeSubaccountId;
+   TooLargeVirtualAccountId;
+   TooManyContributions;
+   TooManyFlows;
+   UnknownFtAsset;
+   UnknownPrincipal;
+   UnknownSubaccount;
+   UnknownVirtualAccount;
+   UnsupportedFeeMode: variant {
+                         FractionWrongFlowsAmount;
+                         SenderPaysMax;
+                       };
+   UnsupportedMaxFlows;
+ };
+type SubaccountId = nat;
+type Stats = 
+ record {
+   batchesProcessed: nat;
+   boardTxs: record {
+               forwarded: nat;
+               rejected: nat;
+               submitted: nat;
+             };
+   canisterStatus:
+    record {
+      cyclesBalance: nat;
+      heartbeats: nat;
+      memorySize: nat;
+    };
+   registry: record {
+               accounts: nat;
+               assets: nat;
+               owners: nat;
+               streams: nat;
+             };
+   txs: record {
+          failed: nat;
+          processed: nat;
+          succeeded: nat;
+        };
+ };
+type StateUpdate = 
+ variant {
+   ft_dec: nat;
+   ft_inc: nat;
+   ft_set: nat;
+ };
+type SimpleTransferError = 
+ variant {
+   DeletedVirtualAccount;
+   IncorrectOwnerId;
+   InsufficientFunds;
+   MismatchInAsset;
+   MismatchInRemotePrincipal;
+   NonZeroAssetSum;
+   NotAController;
+   SuspendedVirtualAccount;
+   TooLargeMemo;
+   UnknownFtAsset;
+   UnknownPrincipal;
+   UnknownSubaccount;
+   UnknownVirtualAccount;
+   UnsupportedFeeMode: variant {
+                         FractionWrongFlowsAmount;
+                         SenderPaysMax;
+                       };
+   UnsupportedMaxFlows;
+ };
+type Result_9 = 
+ variant {
+   err: variant {
+          DeletedVirtualAccount;
+          InvalidArguments: text;
+        };
+   ok: vec int;
+ };
+type Result_8 = 
+ variant {
+   err: ExecuteTxError;
+   ok: GlobalId;
+ };
+type Result_7 = 
+ variant {
+   err:
+    variant {
+      InvalidArguments: text;
+      NoSpaceForPrincipal;
+      NoSpaceForSubaccount;
+    };
+   ok: record {first: SubaccountId;};
+ };
+type Result_6 = 
+ variant {
+   err: variant {
+          InvalidArguments: text;
+          NoSpaceForAccount;
+        };
+   ok: record {first: VirtualAccountId;};
+ };
+type Result_5 = 
+ variant {
+   err: NotFoundError;
+   ok: PriorTxDetails;
+ };
+type Result_4 = 
+ variant {
+   err: NotPendingError;
+   ok;
+ };
+type Result_3 = 
+ variant {
+   err: SimpleTransferError;
+   ok: record {
+         nat;
+         GlobalId;
+       };
+ };
+type Result_2 = 
+ variant {
+   err: SubmitError;
+   ok: PriorId;
+ };
+type Result_13 = 
+ variant {
+   err: variant {UnknownPrincipal;};
+   ok: vec record {asset: Asset;};
+ };
+type Result_12 = 
+ variant {
+   err: ApproveAndExecuteError;
+   ok: GlobalId;
+ };
+type Result_11 = 
+ variant {
+   err: variant {
+          FeeError;
+          NoSpace;
+        };
+   ok: AssetId;
+ };
+type Result_10 = 
+ variant {
+   err: variant {
+          DeletedVirtualAccount;
+          InvalidArguments: text;
+        };
+   ok: vec variant {ft: nat;};
+ };
+type Result_1 = 
+ variant {
+   err: SubmitAndExecuteError;
+   ok: record {
+         GlobalId;
+         TxOutput;
+       };
+ };
+type Result = 
+ variant {
+   err:
+    variant {
+      DeletedVirtualAccount;
+      InsufficientFunds;
+      InvalidArguments: text;
+    };
+   ok: vec variant {ft: record {
+                          nat;
+                          int;
+                        };};
+ };
+type RemoteAccountSelector = 
+ variant {
+   cat: vec RangedSubSelector_1;
+   id: record {
+         principal;
+         nat;
+       };
+   idRange: record {
+              principal;
+              nat;
+              opt nat;
+            };
+ };
+type RangedSubSelector_1 = 
+ variant {
+   id: record {
+         principal;
+         nat;
+       };
+   idRange: record {
+              principal;
+              nat;
+              opt nat;
+            };
+ };
+type RangedSubSelector = 
+ variant {
+   id: nat;
+   idRange: record {
+              nat;
+              opt nat;
+            };
+ };
+type PublicFeeMode = 
+ variant {
+   receiverPays;
+   senderPays;
+ };
+type PriorTxDetails = 
+ record {
+   gid: opt GlobalId;
+   status:
+    variant {
+      failed: TxProcessingError;
+      pending: Approvals;
+      processed: GlobalId;
+      rejected;
+    };
+   submitter: principal;
+   tx: Tx;
+ };
+type PriorId = 
+ record {
+   nat;
+   nat;
+   nat;
+ };
+type NotPendingError = 
+ variant {
+   AlreadyApproved;
+   AlreadyRejected;
+   NoPart;
+   NotFound;
+   WrongAggregator;
+ };
+type NotFoundError = 
+ variant {
+   NotFound;
+   WrongAggregator;
+ };
+type LedgerAPI = 
+ service {
+   accountInfo: (IdSelector) ->
+    (vec record {
+           SubaccountId;
+           variant {ft: AssetId;};
+         }) query;
+   addAggregator: (principal) -> ();
+   adminAccountInfo: (IdSelector) ->
+    (vec record {
+           SubaccountId;
+           variant {ft: AssetId;};
+         }) query;
+   adminState:
+    (record {
+       accounts: opt IdSelector;
+       ftSupplies: opt IdSelector;
+       remoteAccounts: opt RemoteAccountSelector;
+       virtualAccounts: opt IdSelector;
+     }) ->
+    (record {
+       accounts: vec record {
+                       nat;
+                       variant {ft: nat;};
+                     };
+       ftSupplies: vec record {
+                         nat;
+                         nat;
+                       };
+       remoteAccounts:
+        vec
+         record {
+           record {
+             principal;
+             nat;
+           };
+           record {
+             variant {ft: nat;};
+             Expiration;
+           };
+         };
+       virtualAccounts:
+        vec
+         record {
+           nat;
+           record {
+             variant {ft: nat;};
+             SubaccountId;
+             Expiration;
+           };
+         };
+     }) query;
+   aggregators: () -> (vec record {
+                             principal;
+                             nat;
+                           }) query;
+   allAssets: (principal) -> (Result_13) query;
+   /// Approve request
+   approve: (PriorId) -> (Result_4);
+   /// Approve request and process the transaction. Works only this approvement is the last required approvement.
+   ///   * If this approvement is not enough for processing, approval will not be recorded
+   approveAndExecute: (PriorId) -> (Result_12);
+   createFungibleToken: (nat8, text) -> (Result_11);
+   deleteVirtualAccounts: (vec VirtualAccountId) -> (Result_10);
+   emptyVirtualAccounts: (vec VirtualAccountId) -> (Result_9);
+   /// Process fully approved and not executed yet transaction
+   execute: (PriorId) -> (Result_8);
+   feeRatio: () -> (nat) query;
+   ftInfo: (IdSelector) -> (vec record {
+                                  AssetId;
+                                  FtInfo;
+                                }) query;
+   ftSwapRate: (IdSelector) -> (vec record {
+                                      AssetId;
+                                      float64;
+                                    }) query;
+   http_request: (HttpRequest) -> (HttpResponse) query;
+   issueTxStreamId: (nat) -> (nat, nat64);
+   nAccounts: () -> (nat) query;
+   nAdminAccounts: () -> (nat) query;
+   nFtAssets: () -> (nat) query;
+   nStreams: () -> (nat) query;
+   nVirtualAccounts: () -> (nat) query;
+   openAccounts: (vec variant {ft: AssetId;}) -> (Result_7);
+   openVirtualAccounts:
+    (vec
+      record {
+        variant {ft: AssetId;};
+        principal;
+        variant {ft: nat;};
+        SubaccountId;
+        Expiration;
+      }) -> (Result_6);
+   owners_slice: (nat, nat) -> (vec principal) query;
+   ping: () -> (int);
+   priorTxDetails: (PriorId) -> (Result_5) query;
+   processBatch: (nat, vec Tx, nat) -> (nat64, ControlMessage);
+   pushFtRates: (vec record {
+                       nat;
+                       float64;
+                     }) -> ();
+   /// Reject request. It marks request as rejected, but don't remove the request from unapproved list,
+   ///   * so it's status can still be queried until overwritten by newer requests
+   reject: (PriorId) -> (Result_4);
+   remoteAccountInfo: (RemoteAccountSelector) ->
+    (vec record {
+           record {
+             principal;
+             nat;
+           };
+           variant {ft: AssetId;};
+         }) query;
+   removeAggregator: (principal) -> ();
+   requestAuctionFunds: (principal, AssetId) -> (vec record {
+                                                       AssetId;
+                                                       nat;
+                                                     });
+   /// Build and process a new transaction request with transfer from one account to another
+   simpleTransfer:
+    (variant {
+       mint;
+       sub: SubaccountId;
+       vir: record {
+              principal;
+              VirtualAccountId;
+            };
+     },
+    variant {
+      mint;
+      sub: SubaccountId;
+      vir: record {
+             principal;
+             VirtualAccountId;
+           };
+    }, AssetId, variant {
+                  amount: nat;
+                  max;
+                }, PublicFeeMode, opt blob) -> (Result_3);
+   state:
+    (record {
+       accounts: opt IdSelector;
+       ftSupplies: opt IdSelector;
+       remoteAccounts: opt RemoteAccountSelector;
+       virtualAccounts: opt IdSelector;
+     }) ->
+    (record {
+       accounts: vec record {
+                       nat;
+                       variant {ft: nat;};
+                     };
+       ftSupplies: vec record {
+                         nat;
+                         nat;
+                       };
+       remoteAccounts:
+        vec
+         record {
+           record {
+             principal;
+             nat;
+           };
+           record {
+             variant {ft: nat;};
+             Expiration;
+           };
+         };
+       virtualAccounts:
+        vec
+         record {
+           nat;
+           record {
+             variant {ft: nat;};
+             SubaccountId;
+             Expiration;
+           };
+         };
+     }) query;
+   stats: () -> (Stats) query;
+   streamInfo: (IdSelector) -> (vec record {
+                                      nat;
+                                      principal;
+                                    }) query;
+   streamStatus: (IdSelector) ->
+    (vec
+      record {
+        nat;
+        record {
+          closed: bool;
+          lastActive: nat64;
+          length: nat;
+          source: variant {
+                    aggregator: principal;
+                    internal;
+                  };
+        };
+      }) query;
+   /// Create a new transaction request, which requires approval by one or more contributors
+   ///   * Here we init it and put to the lookup table.
+   ///   * If the lookup table is full, we try to reuse the slot with oldest unapproved request
+   submit: (TxInput) -> (Result_2);
+   /// Create and process a new transaction request, which does not require any approvals
+   ///   * Here we do not use the lookup table.
+   submitAndExecute: (TxInput) -> (Result_1);
+   txStatus: (vec GlobalId) -> (vec GidStatus) query;
+   updateVirtualAccounts:
+    (vec record {
+           VirtualAccountId;
+           VirtualAccountUpdateObject;
+         }) -> (Result);
+   virtualAccountInfo: (IdSelector) ->
+    (vec
+      record {
+        VirtualAccountId;
+        record {
+          variant {ft: AssetId;};
+          principal;
+        };
+      }) query;
+ };
+type IdSelector = 
+ variant {
+   cat: vec RangedSubSelector;
+   id: nat;
+   idRange: record {
+              nat;
+              opt nat;
+            };
+ };
+type HttpResponse = 
+ record {
+   body: blob;
+   headers: vec record {
+                  text;
+                  text;
+                };
+   status_code: nat16;
+ };
+type HttpRequest = 
+ record {
+   body: blob;
+   headers: vec record {
+                  text;
+                  text;
+                };
+   method: text;
+   url: text;
+ };
+type GlobalId = 
+ record {
+   nat;
+   nat;
+ };
+type GidStatus = 
+ variant {
+   awaited: record {};
+   dropped: record {};
+   processed: record {0: opt TxResult;};
+ };
+type FtInfo = 
+ record {
+   controller: principal;
+   decimals: nat8;
+   description: text;
+ };
+type Flow = 
+ record {
+   account:
+    variant {
+      air;
+      sub: SubaccountId;
+      vir: record {
+             principal;
+             VirtualAccountId;
+           };
+    };
+   delta: AssetDelta;
+   ownerIndex: nat;
+ };
+type FeeMode = 
+ variant {
+   noFee;
+   receiverPays;
+   senderPays;
+ };
+type Expiration = nat64;
+type ExecuteTxError = 
+ variant {
+   DeletedVirtualAccount;
+   IncorrectOwnerId;
+   InsufficientFunds;
+   MismatchInAsset;
+   MismatchInRemotePrincipal;
+   NoPart;
+   NotAController;
+   NotApproved;
+   NotFound;
+   SuspendedVirtualAccount;
+   UnknownFtAsset;
+   UnknownPrincipal;
+   UnknownSubaccount;
+   UnknownVirtualAccount;
+   UnsupportedFeeMode: variant {
+                         FractionWrongFlowsAmount;
+                         SenderPaysMax;
+                       };
+   WrongAggregator;
+ };
+type ControlMessage = 
+ variant {
+   gap;
+   ok;
+   stop: nat;
+ };
+type ContributionInput = 
+ record {
+   burns: vec Asset;
+   inflow: vec record {
+                 AccountReference;
+                 Asset;
+               };
+   mints: vec Asset;
+   outflow: vec record {
+                  AccountReference;
+                  Asset;
+                };
+   owner: opt principal;
+ };
+type AssetId = nat;
+type AssetDelta = 
+ record {
+   AssetId;
+   variant {
+     amount: int;
+     maxIn;
+     maxOut;
+   };
+ };
+type Asset = 
+ record {
+   AssetId;
+   nat;
+ };
+type ApproveAndExecuteError = 
+ variant {
+   AlreadyApproved;
+   AlreadyRejected;
+   DeletedVirtualAccount;
+   IncorrectOwnerId;
+   InsufficientFunds;
+   MismatchInAsset;
+   MismatchInRemotePrincipal;
+   NoPart;
+   NotAController;
+   NotApproved;
+   NotFound;
+   SuspendedVirtualAccount;
+   UnknownFtAsset;
+   UnknownPrincipal;
+   UnknownSubaccount;
+   UnknownVirtualAccount;
+   UnsupportedFeeMode: variant {
+                         FractionWrongFlowsAmount;
+                         SenderPaysMax;
+                       };
+   WrongAggregator;
+ };
+type Approvals = vec bool;
+type AccountReference = 
+ variant {
+   sub: SubaccountId;
+   vir: record {
+          principal;
+          VirtualAccountId;
+        };
+ };
+service : (vec principal, nat, opt principal) -> LedgerAPI

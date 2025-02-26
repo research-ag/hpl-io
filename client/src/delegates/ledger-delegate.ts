@@ -1,6 +1,7 @@
 import { Principal } from '@dfinity/principal';
 import {
   _SERVICE as LedgerAPI,
+  AccountState,
   AccountType,
   AssetId,
   GidStatus,
@@ -68,8 +69,32 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
     return this.resUpdate((await this.service).createFungibleToken, decimals, description);
   }
 
-  async openAccounts(accountType: AccountType, amount: number): Promise<{ first: bigint }> {
-    return this.resUpdate((await this.service).openAccounts, BigInt(amount), accountType);
+  async openAccounts(accountTypes: AccountType[]): Promise<{ first: bigint }> {
+    return this.resUpdate((await this.service).openAccounts, accountTypes);
+  }
+
+  async openVirtualAccounts(
+    args: {
+      accountType: { type: 'ft'; assetId: AssetId };
+      accessPrincipal: Principal | string;
+      assetState: { type: 'ft'; balance: bigint };
+      backingAccount: SubId;
+      expiration?: number;
+    }[],
+  ): Promise<{ first: VirId }> {
+    return this.resUpdate(
+      (await this.service).openVirtualAccounts,
+      args.map(
+        a =>
+          [
+            { [a.accountType.type]: a.accountType.assetId },
+            typeof a.accessPrincipal === 'string' ? Principal.fromText(a.accessPrincipal) : a.accessPrincipal,
+            { [a.assetState.type]: a.assetState.balance },
+            a.backingAccount,
+            BigInt(a.expiration || 0) * BigInt(1000000),
+          ] as [AccountType, Principal, AccountState, SubId, Time],
+      ),
+    );
   }
 
   async openVirtualAccount(
@@ -79,14 +104,57 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
     backingAccount: SubId,
     expiration?: number,
   ): Promise<{ id: VirId }> {
-    return this.resUpdate(
-      (await this.service).openVirtualAccount,
-      { [accountType.type]: accountType.assetId },
-      accessPrincipal instanceof Principal ? accessPrincipal : Principal.fromText(accessPrincipal),
-      { [assetState.type]: assetState.balance },
-      backingAccount,
-      BigInt(expiration || 0) * BigInt(1000000),
+    let { first } = await this.openVirtualAccounts([
+      {
+        accountType,
+        accessPrincipal,
+        assetState,
+        backingAccount,
+        expiration,
+      },
+    ]);
+    return { id: first };
+  }
+
+  async updateVirtualAccounts(
+    args: {
+      vid: VirId;
+      updates: {
+        backingAccount?: SubId;
+        state?: { ft_set: bigint } | { ft_dec: bigint } | { ft_inc: bigint };
+        expiration?: number;
+      };
+    }[],
+  ): Promise<{ type: 'ft'; balance: bigint; delta: bigint }[]> {
+    const response = await this.resUpdate<
+      [
+        [
+          VirId,
+          {
+            backingAccount: [] | [SubId];
+            state: [] | [{ ft_dec: bigint } | { ft_inc: bigint } | { ft_set: bigint }];
+            expiration: [] | [Time];
+          },
+        ][],
+      ],
+      { ft: [bigint, bigint] }[],
+      { DeletedVirtualAccount: null } | { InvalidArguments: string } | { InsufficientFunds: null }
+    >(
+      (
+        await this.service
+      ).updateVirtualAccounts,
+      args.map(a => [
+        a.vid,
+        {
+          backingAccount:
+            a.updates.backingAccount || a.updates.backingAccount === BigInt(0) ? [a.updates.backingAccount] : [],
+          state: a.updates.state ? [a.updates.state] : [],
+          expiration:
+            a.updates.expiration || a.updates.expiration === 0 ? [BigInt(a.updates.expiration) * BigInt(1000000)] : [],
+        },
+      ]),
     );
+    return response.map(r => ({ type: 'ft', balance: r.ft[0], delta: r.ft[1] }));
   }
 
   async updateVirtualAccount(
@@ -97,32 +165,22 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
       expiration?: number;
     },
   ): Promise<{ type: 'ft'; balance: bigint; delta: bigint }> {
-    const response = await this.resUpdate<
-      [
-        VirId,
-        {
-          backingAccount: [] | [SubId];
-          state: [] | [{ ft_dec: bigint } | { ft_inc: bigint } | { ft_set: bigint }];
-          expiration: [] | [Time];
-        },
-      ],
-      { ft: [bigint, bigint] },
-      { DeletedVirtualAccount: null } | { InvalidArguments: string } | { InsufficientFunds: null }
-    >((await this.service).updateVirtualAccount, vid, {
-      backingAccount: updates.backingAccount || updates.backingAccount === BigInt(0) ? [updates.backingAccount] : [],
-      state: updates.state ? [updates.state] : [],
-      expiration: updates.expiration || updates.expiration === 0 ? [BigInt(updates.expiration) * BigInt(1000000)] : [],
-    });
-    return { type: 'ft', balance: response.ft[0], delta: response.ft[1] };
+    const resp = await this.updateVirtualAccounts([{ vid, updates }]);
+    return resp[0];
+  }
+
+  async deleteVirtualAccounts(vids: [VirId]): Promise<{ type: 'ft'; balance: bigint }[]> {
+    const resp = await this.resUpdate<
+      [VirId[]],
+      { ft: bigint }[],
+      { DeletedVirtualAccount: null } | { InvalidArguments: string }
+    >((await this.service).deleteVirtualAccounts, vids);
+    return resp.map(r => ({ type: 'ft', balance: r.ft }));
   }
 
   async deleteVirtualAccount(vid: VirId): Promise<{ type: 'ft'; balance: bigint }> {
-    const result = await this.resUpdate<
-      [VirId],
-      { ft: bigint },
-      { DeletedVirtualAccount: null } | { InvalidArguments: string }
-    >((await this.service).deleteVirtualAccount, vid);
-    return { type: 'ft', balance: result.ft };
+    const result = await this.deleteVirtualAccounts([vid]);
+    return result[0];
   }
 
   async feeRatio(): Promise<bigint> {
