@@ -90,11 +90,11 @@ describe('Intergation', () => {
   //   }
   // });
 
-  // it('queryWithExtras should return correct timestamp', async () => {
-  //   const [res, canisterTimestamp] = await client.ledger.timestampedSingleTxStatus([BigInt(0), BigInt(10000)]);
-  //   expect(res.status).toBe('awaited');
-  //   expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
-  // });
+  it('queryWithExtras should return correct timestamp', async () => {
+    const [res, canisterTimestamp] = await client.ledger.timestampedSingleTxStatus([BigInt(0), BigInt(10000)]);
+    expect(res.status).toBe('awaited');
+    expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
+  });
 
   it('should unwrap result response on update call', async () => {
     let ft = await client.ledger.createFungibleToken(0, '');

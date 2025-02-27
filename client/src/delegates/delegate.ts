@@ -13,6 +13,7 @@ import { Certificate } from '@dfinity/agent/lib/cjs/certificate';
 import { HttpDetailsResponse } from '@dfinity/agent/lib/cjs/agent';
 import { getCanisterTimestamp } from '../utils/get-canister-timestamp-from-certificate';
 import { Actor, ActorSubclass, ActorMethodExtended, ActorMethodMappedExtended } from '../agent-js';
+import { NodeSignature } from "@dfinity/agent/lib/cjs/agent/api";
 
 export type DelegateCallOptions = {
   retryErrorCallback?: QueryRetryInterceptorErrorCallback;
@@ -30,13 +31,14 @@ export type CallExtraData = {
 export type ActorMethodExtendedReturnType<R> = {
   certificate?: Certificate;
   httpDetails?: HttpDetailsResponse;
+  signatures?: NodeSignature[];
   result: R;
 };
 
 export const mapResponse = <T>(response: ActorMethodExtendedReturnType<T>): [T, CallExtraData] => [
   response.result,
   {
-    canisterTimestamp: response.certificate ? getCanisterTimestamp(response.certificate) : 0,
+    canisterTimestamp: getCanisterTimestamp(response),
   },
 ];
 
