@@ -1,6 +1,6 @@
 import { HplError } from '../../hpl-error';
 import { ReplicaRejectCode } from '@dfinity/agent';
-import { CallExtraData } from '../delegate';
+import { extractCallExtraData } from '../../utils/call-extra-data';
 
 export const hplErrorInterceptor = async <T, Args extends Array<unknown>>(
   call: (...args: Args) => Promise<T>,
@@ -18,7 +18,7 @@ export const hplErrorInterceptor = async <T, Args extends Array<unknown>>(
       }
       throw new HplError(
         { [err.props.Code]: trapMsgMatch ? trapMsgMatch[1] : message },
-        (err as any as { callExtras: CallExtraData }).callExtras,
+        extractCallExtraData((err as any).result || {}),
       );
     } else if (err.message.startsWith('Call was rejected:')) {
       // update error
@@ -34,7 +34,7 @@ export const hplErrorInterceptor = async <T, Args extends Array<unknown>>(
         }
         throw new HplError(
           { [errorCode]: msgMatch ? msgMatch[1] : err.message },
-          (err as any as { callExtras: CallExtraData }).callExtras,
+          extractCallExtraData((err as any).result || {}),
         );
       }
     }

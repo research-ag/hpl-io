@@ -21,7 +21,7 @@ import _SERVICE, {
   canister_install_mode,
   canister_settings,
 } from '@dfinity/agent/lib/cjs/canisters/management_service';
-import { NodeSignature } from "@dfinity/agent/lib/cjs/agent/api";
+import { NodeSignature } from '@dfinity/agent/lib/cjs/agent/api';
 
 export class ActorCallError extends AgentError {
   constructor(
@@ -69,18 +69,18 @@ export class UpdateCallRejectedError extends ActorCallError {
       'Request ID': toHex(requestId),
       ...(response.body
         ? {
-          ...(error_code
-            ? {
-              'Error code': error_code,
-            }
-            : {}),
-          'Reject code': String(reject_code),
-          'Reject message': reject_message,
-        }
+            ...(error_code
+              ? {
+                  'Error code': error_code,
+                }
+              : {}),
+            'Reject code': String(reject_code),
+            'Reject message': reject_message,
+          }
         : {
-          'HTTP status code': response.status.toString(),
-          'HTTP status text': response.statusText,
-        }),
+            'HTTP status code': response.status.toString(),
+            'HTTP status text': response.statusText,
+          }),
     });
   }
 }
@@ -192,20 +192,20 @@ export type ActorMethodMappedExtended<T> = {
  */
 export type CanisterInstallMode =
   | {
-  reinstall: null;
-}
+      reinstall: null;
+    }
   | {
-  upgrade:
-    | []
-    | [
-    {
-      skip_pre_upgrade: [] | [boolean];
-    },
-  ];
-}
+      upgrade:
+        | []
+        | [
+            {
+              skip_pre_upgrade: [] | [boolean];
+            },
+          ];
+    }
   | {
-  install: null;
-};
+      install: null;
+    };
 
 /**
  * Internal metadata for actors. It's an enhanced version of ActorConfig with
@@ -487,10 +487,10 @@ function _createActorMethod(
         case QueryResponseStatus.Replied:
           return func.annotations.includes(ACTOR_METHOD_WITH_HTTP_DETAILS)
             ? {
-              signatures: result.signatures,
-              httpDetails,
-              result: decodeReturnValue(func.retTypes, result.reply.arg),
-            }
+                signatures: result.signatures,
+                httpDetails,
+                result: decodeReturnValue(func.retTypes, result.reply.arg),
+              }
             : decodeReturnValue(func.retTypes, result.reply.arg);
       }
     };
@@ -607,9 +607,9 @@ function _createActorMethod(
       } else if (func.retTypes.length === 0) {
         return shouldIncludeHttpDetails
           ? {
-            httpDetails: response,
-            result: undefined,
-          }
+              httpDetails: response,
+              result: undefined,
+            }
           : undefined;
       } else {
         throw new Error(`Call was returned undefined, but type [${func.retTypes.join(',')}].`);
@@ -620,8 +620,8 @@ function _createActorMethod(
   const handler = (...args: unknown[]) => caller({}, ...args);
   handler.withOptions =
     (options: CallConfig) =>
-      (...args: unknown[]) =>
-        caller(options, ...args);
+    (...args: unknown[]) =>
+      caller(options, ...args);
   return handler as ActorMethod;
 }
 

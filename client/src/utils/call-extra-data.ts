@@ -1,9 +1,17 @@
-import { LookupStatus } from '@dfinity/agent/lib/cjs/certificate';
+import { Certificate, LookupStatus } from '@dfinity/agent/lib/cjs/certificate';
+import { NodeSignature } from '@dfinity/agent/lib/cjs/agent/api';
 import { decodeTime } from '@dfinity/agent/lib/cjs/utils/leb';
 import { bufFromBufLike } from '@dfinity/agent/lib/cjs/utils/buffer';
-import { ActorMethodExtendedReturnType } from "../delegates/delegate";
 
-export const getCanisterTimestamp = (response: ActorMethodExtendedReturnType<unknown>): number => {
+export type CallExtraData = {
+  canisterTimestamp: number;
+};
+
+export const extractCallExtraData = (response: {
+  certificate?: Certificate;
+  signatures?: NodeSignature[];
+}): CallExtraData => {
+  const ret: CallExtraData = { canisterTimestamp: 0 };
   if (response.certificate) {
     const timeLookup = response.certificate.lookup(['time']);
     if (timeLookup.status !== LookupStatus.Found) {
@@ -13,9 +21,9 @@ export const getCanisterTimestamp = (response: ActorMethodExtendedReturnType<unk
       throw new Error('Time was not found in the response or was not in its expected format.');
     }
     const date = decodeTime(bufFromBufLike(timeLookup.value as any));
-    return Number(date);
+    ret.canisterTimestamp = Number(date);
   } else if (response.signatures?.length) {
-    return Number(response.signatures[0].timestamp) / 1_000_000;
+    ret.canisterTimestamp = Number(response.signatures[0].timestamp) / 1_000_000;
   }
-  return 0;
+  return ret;
 };

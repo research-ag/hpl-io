@@ -1,6 +1,6 @@
 import { unpackVariant } from './utils/unpack-variant';
 import { bigIntReplacer } from './utils/json_bigints';
-import { CallExtraData } from './delegates/delegate';
+import { CallExtraData } from './utils/call-extra-data';
 
 /** takes variant response #err(#SomeError(<payload>)) and transforms to readable text: "#SomeError: <payload json>"*/
 export class HplError<T = any> extends Error {

@@ -96,6 +96,20 @@ describe('Intergation', () => {
     expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
   });
 
+  it('query reject should return correct timestamp', async () => {
+    try {
+      await client.ledger.timestampedSingleTxStatus([BigInt(10000), BigInt(10000)]);
+      fail('Error was not thrown');
+    } catch (err) {
+      expect(err instanceof HplError).toBeTruthy();
+      expect((err as HplError).errorPayload).toBe('Stream id inside the gid has not yet been issued');
+      expect((err as HplError).isTrapped()).toBe(false);
+      expect((err as HplError).isErrorRejectThrown()).toBe(true);
+      let canisterTimestamp = (err as HplError).callExtra.canisterTimestamp;
+      expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
+    }
+  });
+
   it('should unwrap result response on update call', async () => {
     let ft = await client.ledger.createFungibleToken(0, '');
     await client.ledger.openAccounts([{ ft }]);

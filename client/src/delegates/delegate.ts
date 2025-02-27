@@ -11,9 +11,9 @@ import { unpackOptResponse } from '../utils/unpack-opt.util';
 import { unpackRes } from '../utils/unpack-res.util';
 import { Certificate } from '@dfinity/agent/lib/cjs/certificate';
 import { HttpDetailsResponse } from '@dfinity/agent/lib/cjs/agent';
-import { getCanisterTimestamp } from '../utils/get-canister-timestamp-from-certificate';
-import { Actor, ActorSubclass, ActorMethodExtended, ActorMethodMappedExtended } from '../agent-js';
-import { NodeSignature } from "@dfinity/agent/lib/cjs/agent/api";
+import { Actor, ActorMethodExtended, ActorMethodMappedExtended, ActorSubclass } from '../agent-js';
+import { NodeSignature } from '@dfinity/agent/lib/cjs/agent/api';
+import { CallExtraData, extractCallExtraData } from '../utils/call-extra-data';
 
 export type DelegateCallOptions = {
   retryErrorCallback?: QueryRetryInterceptorErrorCallback;
@@ -24,10 +24,6 @@ export interface LazyRequest<Res> {
   call: () => Promise<Res>;
 }
 
-export type CallExtraData = {
-  canisterTimestamp: number;
-};
-
 export type ActorMethodExtendedReturnType<R> = {
   certificate?: Certificate;
   httpDetails?: HttpDetailsResponse;
@@ -37,9 +33,7 @@ export type ActorMethodExtendedReturnType<R> = {
 
 export const mapResponse = <T>(response: ActorMethodExtendedReturnType<T>): [T, CallExtraData] => [
   response.result,
-  {
-    canisterTimestamp: getCanisterTimestamp(response),
-  },
+  extractCallExtraData(response),
 ];
 
 export const defaultIcAgent: HttpAgent = new HttpAgent({
