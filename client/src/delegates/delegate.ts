@@ -1,6 +1,6 @@
 import { Principal } from '@dfinity/principal';
 import { IDL } from '@dfinity/candid';
-import { Actor, ActorSubclass, HttpAgent, Identity, RequestId } from '@dfinity/agent';
+import { HttpAgent, Identity, RequestId } from '@dfinity/agent';
 import {
   CallInterceptor,
   hplErrorInterceptor,
@@ -9,10 +9,10 @@ import {
 } from './call-interceptors';
 import { unpackOptResponse } from '../utils/unpack-opt.util';
 import { unpackRes } from '../utils/unpack-res.util';
-import { ActorMethodExtended, FunctionWithArgsAndReturn } from '@dfinity/agent/lib/cjs/actor';
 import { Certificate } from '@dfinity/agent/lib/cjs/certificate';
 import { HttpDetailsResponse } from '@dfinity/agent/lib/cjs/agent';
 import { getCanisterTimestamp } from '../utils/get-canister-timestamp-from-certificate';
+import { Actor, ActorSubclass, ActorMethodExtended, ActorMethodMappedExtended } from '../agent-js';
 
 export type DelegateCallOptions = {
   retryErrorCallback?: QueryRetryInterceptorErrorCallback;
@@ -22,13 +22,6 @@ export interface LazyRequest<Res> {
   requestId: RequestId;
   call: () => Promise<Res>;
 }
-
-// fixed version of agent-js ActorMethodMappedExtendedFixed: does not produce Promise<Promise<T>> return type
-export type ActorMethodMappedExtendedFixed<T> = {
-  [K in keyof T]: T[K] extends FunctionWithArgsAndReturn<infer Args, Promise<infer Ret>>
-    ? ActorMethodExtended<Args, Ret>
-    : never;
-};
 
 export type CallExtraData = {
   canisterTimestamp: number;
@@ -58,7 +51,7 @@ export abstract class Delegate<T> {
     protected readonly _canisterPrincipal: Principal | string,
     public readonly network: 'ic' | 'local',
   ) {
-    this._canisterPromise = (async (): Promise<ActorSubclass<ActorMethodMappedExtendedFixed<T>>> => {
+    this._canisterPromise = (async (): Promise<ActorSubclass<ActorMethodMappedExtended<T>>> => {
       let agent = defaultIcAgent;
       if (network === 'local') {
         agent = new HttpAgent({
@@ -81,10 +74,10 @@ export abstract class Delegate<T> {
       : Principal.fromText(this._canisterPrincipal);
   }
 
-  private _service: ActorSubclass<ActorMethodMappedExtendedFixed<T>> | null = null;
-  private _canisterPromise: Promise<ActorSubclass<ActorMethodMappedExtendedFixed<T>>>;
+  private _service: ActorSubclass<ActorMethodMappedExtended<T>> | null = null;
+  private _canisterPromise: Promise<ActorSubclass<ActorMethodMappedExtended<T>>>;
 
-  public get service(): Promise<ActorSubclass<ActorMethodMappedExtendedFixed<T>>> {
+  public get service(): Promise<ActorSubclass<ActorMethodMappedExtended<T>>> {
     return this._service ? Promise.resolve(this._service) : this._canisterPromise;
   }
 
