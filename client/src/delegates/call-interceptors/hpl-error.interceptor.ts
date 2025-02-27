@@ -1,6 +1,6 @@
 import { HplError } from '../../hpl-error';
 import { ReplicaRejectCode } from '@dfinity/agent';
-import { CallExtraData } from '../hpl-agent';
+import { CallExtraData } from '../delegate';
 
 export const hplErrorInterceptor = async <T, Args extends Array<unknown>>(
   call: (...args: Args) => Promise<T>,

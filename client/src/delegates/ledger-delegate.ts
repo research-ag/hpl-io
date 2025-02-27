@@ -217,7 +217,7 @@ export class LedgerDelegate extends Delegate<LedgerAPI> {
   async timestampedSingleTxStatus(
     id: GlobalId,
     retryErrorCallback: QueryRetryInterceptorErrorCallback = null,
-  ): Promise<[TxLedStatus, bigint]> {
+  ): Promise<[TxLedStatus, number]> {
     const [res, callExtraData] = await this.queryWithExtras<[Array<GlobalId>], Array<GidStatus>>(
       (await this.service).txStatus,
       { retryErrorCallback },

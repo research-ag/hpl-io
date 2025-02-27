@@ -4,12 +4,11 @@ import { LedgerAdminDelegate } from './delegates/ledger-admin-delegate';
 import { AggregatorDelegate } from './delegates/aggregator-delegate';
 import { AssetId, GlobalId } from '../candid/ledger';
 import { finalize, Observable, Subject, takeWhile } from 'rxjs';
-import { AnonymousIdentity, Identity, RequestId } from '@dfinity/agent';
+import { AnonymousIdentity, Identity } from '@dfinity/agent';
 import { AccountRef, TxInput } from '../candid/aggregator';
 import { sleep } from './utils/sleep.util';
 import { HplError } from './hpl-error';
 import { FeeMode } from './types';
-import { CallExtraData } from './delegates/hpl-agent';
 import { OwnersDelegate } from './delegates/owners-delegate';
 
 export type SimpleTransferStatusKey = 'queued' | 'forwarding' | 'forwarded' | 'processed';
@@ -113,27 +112,27 @@ export class HPLClient {
     return aggregator.singleSubmitAndExecute(this._txInputFromRawArgs(from, to, asset, amount, feeMode, memo));
   }
 
-  async prepareSimpleTransfer(
-    aggregator: AggregatorDelegate,
-    from: TransferAccountReference,
-    to: TransferAccountReference,
-    asset: AssetId,
-    amount: number | BigInt | 'max',
-    feeMode: FeeMode | null = null,
-    memo: Array<Uint8Array | number[]> = [],
-  ): Promise<{ requestId: RequestId; commit: () => Promise<[GlobalId, bigint]> }> {
-    const { requestId, call: commit } = await aggregator.prepareUpdateRequest<[[TxInput]], [[GlobalId], CallExtraData]>(
-      'submitAndExecute',
-      [this._txInputFromRawArgs(from, to, asset, amount, feeMode, memo)],
-    );
-    return {
-      requestId,
-      commit: async () => {
-        const [result, callExtra] = await commit();
-        return [result[0], callExtra.canisterTimestamp];
-      },
-    };
-  }
+  // async prepareSimpleTransfer(
+  //   aggregator: AggregatorDelegate,
+  //   from: TransferAccountReference,
+  //   to: TransferAccountReference,
+  //   asset: AssetId,
+  //   amount: number | BigInt | 'max',
+  //   feeMode: FeeMode | null = null,
+  //   memo: Array<Uint8Array | number[]> = [],
+  // ): Promise<{ requestId: RequestId; commit: () => Promise<[GlobalId, bigint]> }> {
+  //   const { requestId, call: commit } = await aggregator.prepareUpdateRequest<[[TxInput]], [[GlobalId], CallExtraData]>(
+  //     'submitAndExecute',
+  //     [this._txInputFromRawArgs(from, to, asset, amount, feeMode, memo)],
+  //   );
+  //   return {
+  //     requestId,
+  //     commit: async () => {
+  //       const [result, callExtra] = await commit();
+  //       return [result[0], callExtra.canisterTimestamp];
+  //     },
+  //   };
+  // }
 
   pollTx(
     aggregator: AggregatorDelegate,
@@ -205,7 +204,7 @@ export class HPLClient {
             e instanceof HplError &&
             e.errorKey == 'CanisterReject' &&
             e.errorPayload == 'Not yet issued' &&
-            Number((e as HplError).callExtra?.canisterTimestamp || 0) <= Number(submissionTimestamp)
+            (e as HplError).callExtra.canisterTimestamp <= Number(submissionTimestamp)
           ) {
             // pass
           } else {

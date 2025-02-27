@@ -1,5 +1,5 @@
 import { HplError } from '../hpl-error';
-import { CallExtraData } from '../delegates/hpl-agent';
+import { CallExtraData } from '../delegates/delegate';
 
 export const unpackRes: <Ok, Err>(
   call: Promise<[{ ok?: Ok; err?: Err }, CallExtraData]>,

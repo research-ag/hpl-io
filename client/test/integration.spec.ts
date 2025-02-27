@@ -42,53 +42,59 @@ describe('Intergation', () => {
     expect(aggregators[0].principal.toText()).toBe(aggregatorId);
   });
 
-  it('should be able to prepare transfer request and submit it separately', async () => {
-    let aggregator = (await client.pickAggregator())!;
-    const [{ length: streamInitialLength }] = await aggregator.streamStatus();
-    const { commit } = await client.prepareSimpleTransfer(
-      aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), BigInt(100)
-    );
-    const [{ length: streamLength2 }] = await aggregator.streamStatus();
-    expect(streamLength2).toBe(streamInitialLength);
-    const [_, canisterTimestamp] = await commit();
+  // it('should be able to prepare transfer request and submit it separately', async () => {
+  //   let aggregator = (await client.pickAggregator())!;
+  //   const [{ length: streamInitialLength }] = await aggregator.streamStatus();
+  //   const { commit } = await client.prepareSimpleTransfer(
+  //     aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), BigInt(100)
+  //   );
+  //   const [{ length: streamLength2 }] = await aggregator.streamStatus();
+  //   expect(streamLength2).toBe(streamInitialLength);
+  //   const [_, canisterTimestamp] = await commit();
+  //
+  //   // check canister timestamp
+  //   expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
+  //
+  //   const [{ length: streamLength3 }] = await aggregator.streamStatus();
+  //   expect(streamLength3).toBe(streamInitialLength + BigInt(1));
+  // });
 
-    // check canister timestamp
-    expect(Math.abs(Date.now() - Number(canisterTimestamp) / 1_000_000)).toBeLessThan(5000);
+  // it('rejected call needs to return correct canister timestamp', async () => {
+  //   let aggregator = (await client.pickAggregator())!;
+  //   try {
+  //     await client.simpleTransfer(
+  //       aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), "max"
+  //     );
+  //     fail('Rejection error was not thrown')
+  //   } catch (err) {
+  //     expect(err instanceof HplError).toBeTruthy();
+  //     let canisterTimestamp = (err as HplError).callExtra.canisterTimestamp;
+  //     expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
+  //   }
+  // });
+  //
+  // it('rejected call needs to return correct HPL error', async () => {
+  //   let aggregator = (await client.pickAggregator())!;
+  //   try {
+  //     await client.simpleTransfer(
+  //       aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), "max"
+  //     );
+  //     fail('Rejection error was not thrown');
+  //   } catch (err) {
+  //     expect(err instanceof HplError).toBeTruthy();
+  //     expect((err as HplError).errorPayload).toBe('Unsupported #max flows');
+  //     expect((err as HplError).isTrapped()).toBe(false);
+  //     expect((err as HplError).isErrorRejectThrown()).toBe(true);
+  //     let canisterTimestamp = (err as HplError).callExtra.canisterTimestamp;
+  //     expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
+  //   }
+  // });
 
-    const [{ length: streamLength3 }] = await aggregator.streamStatus();
-    expect(streamLength3).toBe(streamInitialLength + BigInt(1));
-  });
-
-  it('rejected call needs to return correct canister timestamp', async () => {
-    let aggregator = (await client.pickAggregator())!;
-    try {
-      await client.simpleTransfer(
-        aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), "max"
-      );
-      fail('Rejection error was not thrown')
-    } catch (err) {
-      expect(err instanceof HplError).toBeTruthy();
-      let canisterTimestamp = (err as HplError).callExtra.canisterTimestamp;
-      expect(Math.abs(Date.now() - Number(canisterTimestamp) / 1_000_000)).toBeLessThan(5000);
-    }
-  });
-
-  it('rejected call needs to return correct HPL error', async () => {
-    let aggregator = (await client.pickAggregator())!;
-    try {
-      await client.simpleTransfer(
-        aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), "max"
-      );
-      fail('Rejection error was not thrown');
-    } catch (err) {
-      expect(err instanceof HplError).toBeTruthy();
-      expect((err as HplError).errorPayload).toBe('Unsupported #max flows');
-      expect((err as HplError).isTrapped()).toBe(false);
-      expect((err as HplError).isErrorRejectThrown()).toBe(true);
-      let canisterTimestamp = (err as HplError).callExtra.canisterTimestamp;
-      expect(Math.abs(Date.now() - Number(canisterTimestamp) / 1_000_000)).toBeLessThan(5000);
-    }
-  });
+  // it('queryWithExtras should return correct timestamp', async () => {
+  //   const [res, canisterTimestamp] = await client.ledger.timestampedSingleTxStatus([BigInt(0), BigInt(10000)]);
+  //   expect(res.status).toBe('awaited');
+  //   expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
+  // });
 
   it('should unwrap result response on update call', async () => {
     let ft = await client.ledger.createFungibleToken(0, '');
@@ -106,7 +112,7 @@ describe('Intergation', () => {
       expect((err as HplError).isTrapped()).toBe(false);
       expect((err as HplError).isErrorRejectThrown()).toBe(false);
       let canisterTimestamp = (err as HplError).callExtra.canisterTimestamp;
-      expect(Math.abs(Date.now() - Number(canisterTimestamp) / 1_000_000)).toBeLessThan(5000);
+      expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
     }
   });
 

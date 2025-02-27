@@ -1,4 +1,3 @@
-export * from './delegates/hpl-agent';
 export * from './delegates/delegate';
 export * from './delegates/aggregator-delegate';
 export * from './delegates/ledger-delegate';

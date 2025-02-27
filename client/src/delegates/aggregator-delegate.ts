@@ -55,7 +55,7 @@ export class AggregatorDelegate extends Delegate<AggregatorAPI> {
   async timestampedSingleTxStatus(
     id: GlobalId,
     retryErrorCallback: QueryRetryInterceptorErrorCallback = null,
-  ): Promise<[TxAggStatus, bigint]> {
+  ): Promise<[TxAggStatus, number]> {
     const [results, { canisterTimestamp }] = await this.queryWithExtras<[Array<GlobalId>], Array<GidStatus>>(
       (await this.service).txStatus,
       { retryErrorCallback },
