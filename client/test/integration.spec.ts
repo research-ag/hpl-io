@@ -59,36 +59,22 @@ describe('Intergation', () => {
   //   expect(streamLength3).toBe(streamInitialLength + BigInt(1));
   // });
 
-  // it('rejected call needs to return correct canister timestamp', async () => {
-  //   let aggregator = (await client.pickAggregator())!;
-  //   try {
-  //     await client.simpleTransfer(
-  //       aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), "max"
-  //     );
-  //     fail('Rejection error was not thrown')
-  //   } catch (err) {
-  //     expect(err instanceof HplError).toBeTruthy();
-  //     let canisterTimestamp = (err as HplError).callExtra.canisterTimestamp;
-  //     expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
-  //   }
-  // });
-  //
-  // it('rejected call needs to return correct HPL error', async () => {
-  //   let aggregator = (await client.pickAggregator())!;
-  //   try {
-  //     await client.simpleTransfer(
-  //       aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), "max"
-  //     );
-  //     fail('Rejection error was not thrown');
-  //   } catch (err) {
-  //     expect(err instanceof HplError).toBeTruthy();
-  //     expect((err as HplError).errorPayload).toBe('Unsupported #max flows');
-  //     expect((err as HplError).isTrapped()).toBe(false);
-  //     expect((err as HplError).isErrorRejectThrown()).toBe(true);
-  //     let canisterTimestamp = (err as HplError).callExtra.canisterTimestamp;
-  //     expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
-  //   }
-  // });
+  it('rejected call needs to return correct HPL error', async () => {
+    let aggregator = (await client.pickAggregator())!;
+    try {
+      await client.simpleTransfer(
+        aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), "max"
+      );
+      fail('Rejection error was not thrown');
+    } catch (err) {
+      expect(err instanceof HplError).toBeTruthy();
+      expect((err as HplError).errorPayload).toBe('Unsupported #max flows');
+      expect((err as HplError).isTrapped()).toBe(false);
+      expect((err as HplError).isErrorRejectThrown()).toBe(true);
+      let canisterTimestamp = (err as HplError).callExtra.canisterTimestamp;
+      expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
+    }
+  });
 
   it('queryWithExtras should return correct timestamp', async () => {
     const [res, canisterTimestamp] = await client.ledger.timestampedSingleTxStatus([BigInt(0), BigInt(10000)]);

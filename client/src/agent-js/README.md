@@ -8,3 +8,4 @@ Files here are fully copied from https://github.com/dfinity/agent-js revision `2
 - **FIX**: `decodeReturnValue` now uses `new Uint8Array(msg)` instead of `Buffer.from(msg)` because of wrong buffer used in test environment when using local actor.ts instead of baked into library. Problem with dependencies?
 - **PATCH**: added `signatures` to `ActorMethodExtended` return type
 - **PATCH**: exposed `signatures` in `_createActorMethod::query::replied` return value
+- **PATCH**: put `certificate` in thrown `UpdateCallRejectedError` instance on update call rejection

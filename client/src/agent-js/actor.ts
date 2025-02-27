@@ -548,7 +548,7 @@ function _createActorMethod(
             );
             const error_code_buf = lookupResultToBuffer(certificate.lookup([...path, 'error_code']));
             const error_code = error_code_buf ? new TextDecoder().decode(error_code_buf) : undefined;
-            throw new UpdateCallRejectedError(
+            const error = new UpdateCallRejectedError(
               cid,
               methodName,
               requestId,
@@ -557,6 +557,8 @@ function _createActorMethod(
               rejectMessage,
               error_code,
             );
+            (error as any).certificate = certificate;
+            throw error;
           }
         }
       } else if (response.body && 'reject_message' in response.body) {
