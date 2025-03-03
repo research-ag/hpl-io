@@ -4,7 +4,7 @@ import { LedgerAdminDelegate } from './delegates/ledger-admin-delegate';
 import { AggregatorDelegate } from './delegates/aggregator-delegate';
 import { AssetId, GlobalId } from '../candid/ledger';
 import { finalize, Observable, Subject, takeWhile } from 'rxjs';
-import { AnonymousIdentity, Identity } from '@dfinity/agent';
+import { AnonymousIdentity, Identity, RequestId } from '@dfinity/agent';
 import { AccountRef, TxInput } from '../candid/aggregator';
 import { sleep } from './utils/sleep.util';
 import { HplError } from './hpl-error';
@@ -112,27 +112,27 @@ export class HPLClient {
     return aggregator.singleSubmitAndExecute(this._txInputFromRawArgs(from, to, asset, amount, feeMode, memo));
   }
 
-  // async prepareSimpleTransfer(
-  //   aggregator: AggregatorDelegate,
-  //   from: TransferAccountReference,
-  //   to: TransferAccountReference,
-  //   asset: AssetId,
-  //   amount: number | BigInt | 'max',
-  //   feeMode: FeeMode | null = null,
-  //   memo: Array<Uint8Array | number[]> = [],
-  // ): Promise<{ requestId: RequestId; commit: () => Promise<[GlobalId, bigint]> }> {
-  //   const { requestId, call: commit } = await aggregator.prepareUpdateRequest<[[TxInput]], [[GlobalId], CallExtraData]>(
-  //     'submitAndExecute',
-  //     [this._txInputFromRawArgs(from, to, asset, amount, feeMode, memo)],
-  //   );
-  //   return {
-  //     requestId,
-  //     commit: async () => {
-  //       const [result, callExtra] = await commit();
-  //       return [result[0], callExtra.canisterTimestamp];
-  //     },
-  //   };
-  // }
+  async prepareSimpleTransfer(
+    aggregator: AggregatorDelegate,
+    from: TransferAccountReference,
+    to: TransferAccountReference,
+    asset: AssetId,
+    amount: number | BigInt | 'max',
+    feeMode: FeeMode | null = null,
+    memo: Array<Uint8Array | number[]> = [],
+  ): Promise<{ requestId: RequestId; commit: () => Promise<[GlobalId, number]> }> {
+    const { requestId, commit } = await aggregator.prepareUpdateRequestWithExtras(
+      (await aggregator.service).submitAndExecute,
+      [this._txInputFromRawArgs(from, to, asset, amount, feeMode, memo)],
+    );
+    return {
+      requestId,
+      commit: async () => {
+        const [result, callExtra] = await commit();
+        return [result[0], callExtra.canisterTimestamp];
+      },
+    };
+  }
 
   pollTx(
     aggregator: AggregatorDelegate,

@@ -150,6 +150,11 @@ export interface ActorMethod<Args extends unknown[] = unknown[], Ret = unknown> 
   (...args: Args): Promise<Ret>;
 
   withOptions(options: CallConfig): (...args: Args) => Promise<Ret>;
+
+  prepare(...args: Args): Promise<{
+    requestId: RequestId;
+    commit: () => Promise<Ret>;
+  }>;
 }
 
 /**
@@ -168,6 +173,16 @@ export interface ActorMethodExtended<Args extends unknown[] = unknown[], Ret = u
     httpDetails?: HttpDetailsResponse;
     signatures?: NodeSignature[];
     result: Ret;
+  }>;
+
+  prepare(...args: Args): Promise<{
+    requestId: RequestId;
+    commit: () => Promise<{
+      certificate?: Certificate;
+      httpDetails?: HttpDetailsResponse;
+      signatures?: NodeSignature[];
+      result: Ret;
+    }>;
   }>;
 }
 
@@ -624,6 +639,10 @@ function _createActorMethod(
     (options: CallConfig) =>
     (...args: unknown[]) =>
       caller(options, ...args);
+  handler.prepare = async (...args: unknown[]) => ({
+    requestId: null!,
+    commit: () => caller({}, ...args),
+  });
   return handler as ActorMethod;
 }
 

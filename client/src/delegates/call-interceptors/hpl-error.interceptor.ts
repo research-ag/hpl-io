@@ -10,10 +10,7 @@ export const hplErrorInterceptor = async <T, Args extends Array<unknown>>(
     return await call(...args);
   } catch (err: any) {
     if (err.type === 'query') {
-      throw new HplError(
-        { [err.props.Code]: err.props.Message },
-        extractCallExtraData((err as any).result || {}),
-      );
+      throw new HplError({ [err.props.Code]: err.props.Message }, extractCallExtraData((err as any).result || {}));
     } else if (err.type === 'update') {
       throw new HplError(
         { [ReplicaRejectCode[err.reject_code]]: err.reject_message },

@@ -9,3 +9,4 @@ Files here are fully copied from https://github.com/dfinity/agent-js revision `2
 - **PATCH**: added `signatures` to `ActorMethodExtended` return type
 - **PATCH**: exposed `signatures` in `_createActorMethod::query::replied` return value
 - **PATCH**: put `certificate` in thrown `UpdateCallRejectedError` instance on update call rejection
+- **PATCH**: added `prepare` function to `ActorMethod` and `ActorMethodExtended`

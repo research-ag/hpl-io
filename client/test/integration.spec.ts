@@ -42,22 +42,22 @@ describe('Intergation', () => {
     expect(aggregators[0].principal.toText()).toBe(aggregatorId);
   });
 
-  // it('should be able to prepare transfer request and submit it separately', async () => {
-  //   let aggregator = (await client.pickAggregator())!;
-  //   const [{ length: streamInitialLength }] = await aggregator.streamStatus();
-  //   const { commit } = await client.prepareSimpleTransfer(
-  //     aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), BigInt(100)
-  //   );
-  //   const [{ length: streamLength2 }] = await aggregator.streamStatus();
-  //   expect(streamLength2).toBe(streamInitialLength);
-  //   const [_, canisterTimestamp] = await commit();
-  //
-  //   // check canister timestamp
-  //   expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
-  //
-  //   const [{ length: streamLength3 }] = await aggregator.streamStatus();
-  //   expect(streamLength3).toBe(streamInitialLength + BigInt(1));
-  // });
+  it('should be able to prepare transfer request and submit it separately', async () => {
+    let aggregator = (await client.pickAggregator())!;
+    const [{ length: streamInitialLength }] = await aggregator.streamStatus();
+    const { commit } = await client.prepareSimpleTransfer(
+      aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), BigInt(100)
+    );
+    const [{ length: streamLength2 }] = await aggregator.streamStatus();
+    expect(streamLength2).toBe(streamInitialLength);
+    const [_, canisterTimestamp] = await commit();
+
+    // check canister timestamp
+    expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
+
+    const [{ length: streamLength3 }] = await aggregator.streamStatus();
+    expect(streamLength3).toBe(streamInitialLength + BigInt(1));
+  });
 
   it('rejected call needs to return correct HPL error', async () => {
     let aggregator = (await client.pickAggregator())!;

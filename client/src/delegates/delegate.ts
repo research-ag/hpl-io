@@ -21,7 +21,7 @@ export type DelegateCallOptions = {
 
 export interface LazyRequest<Res> {
   requestId: RequestId;
-  call: () => Promise<Res>;
+  commit: () => Promise<Res>;
 }
 
 export type ActorMethodExtendedReturnType<R> = {
@@ -155,10 +155,25 @@ export abstract class Delegate<T> {
     return unpackRes(this.updateWithExtras(call, ...args));
   }
 
-  // public async prepareUpdateRequest<Args extends Array<unknown>, Res>(
-  //   methodName: string,
-  //   ...args: Args
-  // ): Promise<LazyRequest<Res>> {
-  //   return (await this.service)!.prepareUpdateRequest(methodName, ...args);
-  // }
+  public async prepareUpdateRequest<Args extends Array<unknown>, Res>(
+    call: ActorMethodExtended<Args, Res>,
+    ...args: Args
+  ): Promise<LazyRequest<Res>> {
+    const { requestId, commit } = await this.prepareUpdateRequestWithExtras(call, ...args);
+    return {
+      requestId,
+      commit: () => commit().then(([res, _]) => res),
+    };
+  }
+
+  public async prepareUpdateRequestWithExtras<Args extends Array<unknown>, Res>(
+    call: ActorMethodExtended<Args, Res>,
+    ...args: Args
+  ): Promise<LazyRequest<[Res, CallExtraData]>> {
+    const { requestId, commit } = await call.prepare(...args);
+    return {
+      requestId,
+      commit: () => commit().then(mapResponse),
+    };
+  }
 }
