@@ -10,3 +10,7 @@ Files here are fully copied from https://github.com/dfinity/agent-js revision `2
 - **PATCH**: exposed `signatures` in `_createActorMethod::query::replied` return value
 - **PATCH**: put `certificate` in thrown `UpdateCallRejectedError` instance on update call rejection
 - **PATCH**: added `prepare` function to `ActorMethod` and `ActorMethodExtended`
+
+### http-agent.js
+- **PATCH**: split `call` function into two parts: `call0` and `call1`. Use them sequentally in `call` function
+- **PATCH**: added `prepareCall` function which executes `call0` and returns function which executes `call1`

@@ -1,6 +1,6 @@
 import { Principal } from '@dfinity/principal';
 import { IDL } from '@dfinity/candid';
-import { HttpAgent, Identity, RequestId } from '@dfinity/agent';
+import { Identity, RequestId } from '@dfinity/agent';
 import {
   CallInterceptor,
   hplErrorInterceptor,
@@ -11,7 +11,7 @@ import { unpackOptResponse } from '../utils/unpack-opt.util';
 import { unpackRes } from '../utils/unpack-res.util';
 import { Certificate } from '@dfinity/agent/lib/cjs/certificate';
 import { HttpDetailsResponse } from '@dfinity/agent/lib/cjs/agent';
-import { Actor, ActorMethodExtended, ActorMethodMappedExtended, ActorSubclass } from '../agent-js';
+import { Actor, ActorMethodExtended, ActorMethodMappedExtended, ActorSubclass, HttpAgent } from '../agent-js';
 import { NodeSignature } from '@dfinity/agent/lib/cjs/agent/api';
 import { CallExtraData, extractCallExtraData } from '../utils/call-extra-data';
 

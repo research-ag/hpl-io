@@ -45,9 +45,10 @@ describe('Intergation', () => {
   it('should be able to prepare transfer request and submit it separately', async () => {
     let aggregator = (await client.pickAggregator())!;
     const [{ length: streamInitialLength }] = await aggregator.streamStatus();
-    const { commit } = await client.prepareSimpleTransfer(
+    const { requestId, commit } = await client.prepareSimpleTransfer(
       aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), BigInt(100)
     );
+    expect(requestId.byteLength).toBeGreaterThan(0);
     const [{ length: streamLength2 }] = await aggregator.streamStatus();
     expect(streamLength2).toBe(streamInitialLength);
     const [_, canisterTimestamp] = await commit();
