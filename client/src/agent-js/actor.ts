@@ -22,6 +22,7 @@ import _SERVICE, {
   canister_settings,
 } from '@dfinity/agent/lib/cjs/canisters/management_service';
 import { NodeSignature } from '@dfinity/agent/lib/cjs/agent/api';
+import { HttpAgent } from './http-agent';
 
 export class ActorCallError extends AgentError {
   constructor(
@@ -470,6 +471,15 @@ function _createActorMethod(
   blsVerify?: CreateCertificateOptions['blsVerify'],
 ): ActorMethod {
   let caller: (options: CallConfig, ...args: unknown[]) => Promise<unknown>;
+  let lazyCaller:
+    | ((
+        options: CallConfig,
+        ...args: unknown[]
+      ) => Promise<{
+        requestId: RequestId;
+        commit: () => Promise<unknown>;
+      }>)
+    | null = null;
   if (func.annotations.includes('query') || func.annotations.includes('composite_query')) {
     caller = async (options, ...args) => {
       // First, if there's a config transformation, call it.
@@ -510,7 +520,7 @@ function _createActorMethod(
       }
     };
   } else {
-    caller = async (options, ...args) => {
+    const caller0 = async (options: CallConfig, ...args: any) => {
       // First, if there's a config transformation, call it.
       options = {
         ...options,
@@ -520,7 +530,7 @@ function _createActorMethod(
         }),
       };
 
-      const agent = options.agent || actor[metadataSymbol].config.agent || getDefaultAgent();
+      const agent: HttpAgent = (options.agent || actor[metadataSymbol].config.agent || getDefaultAgent()) as HttpAgent;
       const { canisterId, effectiveCanisterId, pollingStrategyFactory } = {
         ...DEFAULT_ACTOR_CONFIG,
         ...actor[metadataSymbol].config,
@@ -529,12 +539,29 @@ function _createActorMethod(
       const cid = Principal.from(canisterId);
       const ecid = effectiveCanisterId !== undefined ? Principal.from(effectiveCanisterId) : cid;
       const arg = IDL.encode(func.argTypes, args);
-
-      const { requestId, response, requestDetails } = await agent.call(cid, {
-        methodName,
+      return {
+        agent,
+        cid,
         arg,
-        effectiveCanisterId: ecid,
-      });
+        ecid,
+        canisterId,
+        pollingStrategyFactory,
+      };
+    };
+
+    const caller1 = async (
+      arg0: {
+        agent: Agent;
+        cid: Principal;
+        arg: ArrayBuffer;
+        ecid: Principal;
+        canisterId: string | Principal;
+        pollingStrategyFactory: PollStrategyFactory;
+      },
+      resp: SubmitResponse,
+    ) => {
+      const { agent, cid, arg, ecid, canisterId, pollingStrategyFactory } = arg0;
+      const { requestId, response, requestDetails } = resp;
       let reply: ArrayBuffer | undefined;
       let certificate: Certificate | undefined;
       if (response.body && (response.body as v3ResponseBody).certificate) {
@@ -632,6 +659,32 @@ function _createActorMethod(
         throw new Error(`Call was returned undefined, but type [${func.retTypes.join(',')}].`);
       }
     };
+
+    caller = async (options, ...args) => {
+      const arg0 = await caller0(options, ...args);
+      const resp = await arg0.agent.call(arg0.cid, {
+        methodName,
+        arg: arg0.arg,
+        effectiveCanisterId: arg0.ecid,
+      });
+      return caller1(arg0, resp);
+    };
+
+    lazyCaller = async (options, ...args) => {
+      const arg0 = await caller0(options, ...args);
+      const { requestId, commit } = await arg0.agent.prepareCall(arg0.cid, {
+        methodName,
+        arg: arg0.arg,
+        effectiveCanisterId: arg0.ecid,
+      });
+      return {
+        requestId,
+        commit: async () => {
+          const resp = await commit();
+          return caller1(arg0, resp);
+        },
+      };
+    };
   }
 
   const handler = (...args: unknown[]) => caller({}, ...args);
@@ -639,10 +692,16 @@ function _createActorMethod(
     (options: CallConfig) =>
     (...args: unknown[]) =>
       caller(options, ...args);
-  handler.prepare = async (...args: unknown[]) => ({
-    requestId: null!,
-    commit: () => caller({}, ...args),
-  });
+  handler.prepare = async (...args: unknown[]) => {
+    if (lazyCaller) {
+      return lazyCaller({}, ...args);
+    } else {
+      return {
+        requestId: null!,
+        commit: () => caller({}, ...args),
+      };
+    }
+  };
   return handler as ActorMethod;
 }
 
