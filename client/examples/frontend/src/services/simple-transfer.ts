@@ -5,13 +5,11 @@ import {
   bigIntReviver,
   FeeMode,
   HPLClient,
-  pollForResponseWithTimestamp,
   SimpleTransferStatusKey,
   TransferAccountReference,
 } from '@research-ag/hpl-client';
 import { Principal } from '@dfinity/principal';
 import { RequestId } from '@dfinity/agent';
-import { maxAttempts } from '@dfinity/agent/lib/cjs/polling/strategy';
 
 export const TX_HISTORY_KEY = 'tx_history_';
 export type TxArgs = [from: TransferAccountReference, to: TransferAccountReference, asset: bigint, amount: number | BigInt | 'max', feeMode?: FeeMode, memo?: Array<Uint8Array | number[]>];
@@ -68,16 +66,15 @@ export const runOrPickupSimpleTransfer = async (
       throw new Error('No available aggregator');
     }
 
-    let submissionTimestamp = BigInt(0);
+    let submissionTimestamp = 0;
 
     // submit to aggregator
     if (!txId) {
       if (submitRequestId) {
         logCallback('Retrieving response by request id...');
         const requestId = new Uint8Array(submitRequestId!.split(',') as any as number[]).buffer as RequestId;
-        const [responseBytes, timestamp] = await pollForResponseWithTimestamp((await aggregator.agent)!, aggregator.canisterPrincipal, requestId, maxAttempts(5));
-        const [gids, _] = await ((await aggregator.service).parseResponse('submitAndExecute', responseBytes, null, timestamp));
-        txId = gids[0];
+        const [gid, _] = await client.getSimpleTransferResponse(aggregator, requestId);
+        txId = gid;
       } else {
         const { requestId, commit } = await client.prepareSimpleTransfer(aggregator, ...txArgs);
         submitRequestId = (new Uint8Array(requestId)).join(',');

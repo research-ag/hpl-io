@@ -3,7 +3,6 @@ import {
   getDefaultAgent,
   HttpDetailsResponse,
   QueryResponseRejected,
-  QueryResponseStatus,
   ReplicaRejectCode,
   SubmitResponse,
   v2ResponseBody,
@@ -24,6 +23,12 @@ import _SERVICE, {
 import { NodeSignature } from '@dfinity/agent/lib/cjs/agent/api';
 import { HttpAgent } from './http-agent';
 import { CallRequest } from '@dfinity/agent/lib/cjs/agent/http/types';
+
+// module resolution fixes
+enum QueryResponseStatus {
+  Replied = 'replied',
+  Rejected = 'rejected',
+}
 
 export class ActorCallError extends AgentError {
   constructor(
@@ -515,17 +520,17 @@ function _createActorMethod(
       } as HttpDetailsResponse;
 
       switch (result.status) {
-        case QueryResponseStatus.Rejected:
-          throw new QueryCallRejectedError(cid, methodName, result);
+        case QueryResponseStatus.Rejected as any:
+          throw new QueryCallRejectedError(cid, methodName, result as any);
 
-        case QueryResponseStatus.Replied:
+        case QueryResponseStatus.Replied as any:
           return func.annotations.includes(ACTOR_METHOD_WITH_HTTP_DETAILS)
             ? {
                 signatures: result.signatures,
                 httpDetails,
-                result: decodeReturnValue(func.retTypes, result.reply.arg),
+                result: decodeReturnValue(func.retTypes, (result as any).reply.arg),
               }
-            : decodeReturnValue(func.retTypes, result.reply.arg);
+            : decodeReturnValue(func.retTypes, (result as any).reply.arg);
       }
     };
   } else {

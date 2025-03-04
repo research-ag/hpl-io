@@ -103,6 +103,7 @@ const App: React.FC = () => {
   };
 
   const onQueryAggregatorsClicked = async () => {
+    debugger;
     const result = await client.ledger.aggregators();
     appendLogEntry(`Aggregators list:`);
     for (const entry of result) {

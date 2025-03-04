@@ -23,7 +23,8 @@ const OpenSubaccount: React.FC<OpenSubaccountProps> = ({ client, onLogEntry }) =
     await logTime(onLogEntry, async () => {
       try {
         onLogEntry(`Opening subaccounts (args: { ft: ${BigInt(assetId)}}, ${amount}) .....`);
-        const { first } = await client.ledger.openAccounts({ ft: BigInt(assetId) }, amount);
+        let arg = new Array(amount).fill(null).map(() => ({ ft: BigInt(assetId) }));
+        const { first } = await client.ledger.openAccounts(arg);
         onLogEntry(`Opened ${amount} subaccounts with consequent id-s, starting from ${first}`);
       } catch (err) {
         onLogEntry(`Error: ${err}`);

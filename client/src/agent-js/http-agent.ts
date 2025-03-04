@@ -19,14 +19,11 @@ import {
 import { Expiry, httpHeadersTransform, makeNonceTransform } from '@dfinity/agent/lib/cjs/agent/http/transforms';
 import {
   CallRequest,
-  Endpoint,
   HttpAgentRequest,
   HttpAgentRequestTransformFn,
   HttpAgentSubmitRequest,
   makeNonce,
-  Nonce,
   QueryRequest,
-  ReadRequestType,
   SubmitRequestType,
 } from '@dfinity/agent/lib/cjs/agent/http/types';
 import {
@@ -46,8 +43,22 @@ import { BackoffStrategy, BackoffStrategyFactory, ExponentialBackoff } from '@df
 
 export * from '@dfinity/agent/lib/cjs/agent/http/transforms';
 export * from '@dfinity/agent/lib/cjs/agent/http/errors';
-export { Nonce, makeNonce } from '@dfinity/agent/lib/cjs/agent/http/types';
 
+// module resolution fixes
+declare type Nonce = any;
+
+enum Endpoint {
+  Query = 'read',
+  ReadState = 'read_state',
+  Call = 'call',
+}
+
+enum ReadRequestType {
+  Query = 'query',
+  ReadState = 'read_state',
+}
+
+// actual module contents
 export enum RequestStatusResponseStatus {
   Received = 'received',
   Processing = 'processing',
@@ -476,7 +487,7 @@ export class HttpAgent implements Agent {
           ...(this.#credentials ? { Authorization: 'Basic ' + btoa(this.#credentials) } : {}),
         },
       },
-      endpoint: Endpoint.Call,
+      endpoint: Endpoint.Call as any,
       body: submit,
     })) as HttpAgentSubmitRequest;
 
@@ -833,7 +844,7 @@ export class HttpAgent implements Agent {
     const sender = id?.getPrincipal() || Principal.anonymous();
 
     const request: QueryRequest = {
-      request_type: ReadRequestType.Query,
+      request_type: ReadRequestType.Query as any,
       canister_id: canister,
       method_name: fields.methodName,
       arg: fields.arg,
@@ -852,7 +863,7 @@ export class HttpAgent implements Agent {
           ...(this.#credentials ? { Authorization: 'Basic ' + btoa(this.#credentials) } : {}),
         },
       },
-      endpoint: Endpoint.Query,
+      endpoint: Endpoint.Query as any,
       body: request,
     });
 
@@ -1026,9 +1037,9 @@ export class HttpAgent implements Agent {
           ...(this.#credentials ? { Authorization: 'Basic ' + btoa(this.#credentials) } : {}),
         },
       },
-      endpoint: Endpoint.ReadState,
+      endpoint: Endpoint.ReadState as any,
       body: {
-        request_type: ReadRequestType.ReadState,
+        request_type: ReadRequestType.ReadState as any,
         paths: fields.paths,
         sender,
         ingress_expiry: new Expiry(this.#maxIngressExpiryInMinutes * MINUTE_TO_MSECS),
@@ -1262,7 +1273,7 @@ export class HttpAgent implements Agent {
 
   protected _transform(request: HttpAgentRequest): Promise<HttpAgentRequest> {
     let p = Promise.resolve(request);
-    if (request.endpoint === Endpoint.Call) {
+    if (request.endpoint === (Endpoint.Call as any)) {
       for (const fn of this.#updatePipeline) {
         p = p.then(r => fn(r).then(r2 => r2 || r));
       }
