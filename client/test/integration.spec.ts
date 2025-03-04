@@ -51,13 +51,38 @@ describe('Intergation', () => {
     expect(requestId.byteLength).toBeGreaterThan(0);
     const [{ length: streamLength2 }] = await aggregator.streamStatus();
     expect(streamLength2).toBe(streamInitialLength);
-    const [_, canisterTimestamp] = await commit();
+    const [gid, canisterTimestamp] = await commit();
 
     // check canister timestamp
     expect(Math.abs(Date.now() - canisterTimestamp)).toBeLessThan(5000);
 
     const [{ length: streamLength3 }] = await aggregator.streamStatus();
     expect(streamLength3).toBe(streamInitialLength + BigInt(1));
+
+    const [status] = await client.ledger.txStatus([gid]);
+    expect(status).toEqual({
+      result: [{ failure: { ftTransfer: { InvalidArguments: "Unknown FT asset" } } }],
+      status: "processed"
+    });
+  });
+
+  it('should be able to get response by request id', async () => {
+    let aggregator = (await client.pickAggregator())!;
+    const [{ length: streamInitialLength }] = await aggregator.streamStatus();
+    const { requestId, commit } = await client.prepareSimpleTransfer(
+      aggregator, { type: 'mint' }, { type: 'mint' }, BigInt(2), BigInt(100)
+    );
+    expect(requestId.byteLength).toBeGreaterThan(0);
+    await Promise.race([
+      commit(),
+      new Promise(r => setTimeout(r, 100))
+    ]);
+    const [gid] = await client.getSimpleTransferResponse(aggregator, requestId);
+    const [status] = await client.ledger.txStatus([gid]);
+    expect(status).toEqual({
+      result: [{ failure: { ftTransfer: { InvalidArguments: "Unknown FT asset" } } }],
+      status: "processed"
+    });
   });
 
   it('rejected call needs to return correct HPL error', async () => {
