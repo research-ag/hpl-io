@@ -176,4 +176,20 @@ export abstract class Delegate<T> {
       commit: () => commit().then(mapResponse),
     };
   }
+
+  public async fetchUpdateRequestResponse<Args extends Array<unknown>, Res>(
+    call: ActorMethodExtended<Args, Res>,
+    requestId: RequestId,
+  ): Promise<Res> {
+    const [res, _] = await this.fetchUpdateRequestResponseWithExtras(call, requestId);
+    return res;
+  }
+
+  public async fetchUpdateRequestResponseWithExtras<Args extends Array<unknown>, Res>(
+    call: ActorMethodExtended<Args, Res>,
+    requestId: RequestId,
+  ): Promise<[Res, CallExtraData]> {
+    const response = await call.fetchResponse(requestId);
+    return mapResponse(response);
+  }
 }

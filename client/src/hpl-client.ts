@@ -134,10 +134,18 @@ export class HPLClient {
     };
   }
 
+  async getSimpleTransferResponse(aggregator: AggregatorDelegate, requestId: RequestId): Promise<[GlobalId, number]> {
+    const [result, callExtra] = await aggregator.fetchUpdateRequestResponseWithExtras(
+      (await aggregator.service).submitAndExecute,
+      requestId,
+    );
+    return [result[0], callExtra.canisterTimestamp];
+  }
+
   pollTx(
     aggregator: AggregatorDelegate,
     txId: GlobalId,
-    submissionTimestamp: BigInt = 0n,
+    submissionTimestamp: number = 0,
   ): Observable<SimpleTransferStatus> {
     const subj: Subject<SimpleTransferStatus> = new Subject<SimpleTransferStatus>();
     let interrupted = false;

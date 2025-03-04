@@ -23,6 +23,7 @@ import _SERVICE, {
 } from '@dfinity/agent/lib/cjs/canisters/management_service';
 import { NodeSignature } from '@dfinity/agent/lib/cjs/agent/api';
 import { HttpAgent } from './http-agent';
+import { CallRequest } from '@dfinity/agent/lib/cjs/agent/http/types';
 
 export class ActorCallError extends AgentError {
   constructor(
@@ -70,18 +71,18 @@ export class UpdateCallRejectedError extends ActorCallError {
       'Request ID': toHex(requestId),
       ...(response.body
         ? {
-            ...(error_code
-              ? {
-                  'Error code': error_code,
-                }
-              : {}),
-            'Reject code': String(reject_code),
-            'Reject message': reject_message,
-          }
+          ...(error_code
+            ? {
+              'Error code': error_code,
+            }
+            : {}),
+          'Reject code': String(reject_code),
+          'Reject message': reject_message,
+        }
         : {
-            'HTTP status code': response.status.toString(),
-            'HTTP status text': response.statusText,
-          }),
+          'HTTP status code': response.status.toString(),
+          'HTTP status text': response.statusText,
+        }),
     });
   }
 }
@@ -156,6 +157,8 @@ export interface ActorMethod<Args extends unknown[] = unknown[], Ret = unknown> 
     requestId: RequestId;
     commit: () => Promise<Ret>;
   }>;
+
+  fetchResponse(requestId: RequestId): Promise<Ret>;
 }
 
 /**
@@ -185,6 +188,13 @@ export interface ActorMethodExtended<Args extends unknown[] = unknown[], Ret = u
       result: Ret;
     }>;
   }>;
+
+  fetchResponse(requestId: RequestId): Promise<{
+    certificate?: Certificate;
+    httpDetails?: HttpDetailsResponse;
+    signatures?: NodeSignature[];
+    result: Ret;
+  }>;
 }
 
 export type FunctionWithArgsAndReturn<Args extends unknown[] = unknown[], Ret = unknown> = (...args: Args) => Ret;
@@ -208,20 +218,20 @@ export type ActorMethodMappedExtended<T> = {
  */
 export type CanisterInstallMode =
   | {
-      reinstall: null;
-    }
+  reinstall: null;
+}
   | {
-      upgrade:
-        | []
-        | [
-            {
-              skip_pre_upgrade: [] | [boolean];
-            },
-          ];
-    }
+  upgrade:
+    | []
+    | [
+    {
+      skip_pre_upgrade: [] | [boolean];
+    },
+  ];
+}
   | {
-      install: null;
-    };
+  install: null;
+};
 
 /**
  * Internal metadata for actors. It's an enhanced version of ActorConfig with
@@ -471,15 +481,14 @@ function _createActorMethod(
   blsVerify?: CreateCertificateOptions['blsVerify'],
 ): ActorMethod {
   let caller: (options: CallConfig, ...args: unknown[]) => Promise<unknown>;
-  let lazyCaller:
-    | ((
-        options: CallConfig,
-        ...args: unknown[]
-      ) => Promise<{
-        requestId: RequestId;
-        commit: () => Promise<unknown>;
-      }>)
-    | null = null;
+  let lazyCaller: (
+    options: CallConfig,
+    ...args: unknown[]
+  ) => Promise<{
+    requestId: RequestId;
+    commit: () => Promise<unknown>;
+  }> = undefined!;
+  let resultFetcher: (options: CallConfig, requestId: RequestId) => Promise<unknown> = undefined!;
   if (func.annotations.includes('query') || func.annotations.includes('composite_query')) {
     caller = async (options, ...args) => {
       // First, if there's a config transformation, call it.
@@ -512,15 +521,15 @@ function _createActorMethod(
         case QueryResponseStatus.Replied:
           return func.annotations.includes(ACTOR_METHOD_WITH_HTTP_DETAILS)
             ? {
-                signatures: result.signatures,
-                httpDetails,
-                result: decodeReturnValue(func.retTypes, result.reply.arg),
-              }
+              signatures: result.signatures,
+              httpDetails,
+              result: decodeReturnValue(func.retTypes, result.reply.arg),
+            }
             : decodeReturnValue(func.retTypes, result.reply.arg);
       }
     };
   } else {
-    const caller0 = async (options: CallConfig, ...args: any) => {
+    const caller__prepareOptions = async (options: CallConfig, ...args: any) => {
       // First, if there's a config transformation, call it.
       options = {
         ...options,
@@ -538,18 +547,80 @@ function _createActorMethod(
       };
       const cid = Principal.from(canisterId);
       const ecid = effectiveCanisterId !== undefined ? Principal.from(effectiveCanisterId) : cid;
-      const arg = IDL.encode(func.argTypes, args);
       return {
         agent,
         cid,
-        arg,
         ecid,
         canisterId,
         pollingStrategyFactory,
       };
     };
 
-    const caller1 = async (
+    const caller__pollResponse = async (arg: {
+      pollingStrategyFactory: PollStrategyFactory;
+      agent: Agent;
+      ecid: Principal;
+      requestId: RequestId;
+    }): Promise<{ certificate: Certificate; reply: ArrayBuffer }> => {
+      const { pollingStrategyFactory, agent, ecid, requestId } = arg;
+      const pollStrategy = pollingStrategyFactory();
+      // Contains the certificate and the reply from the boundary node
+      const response = await pollForResponse(agent, ecid, requestId, pollStrategy, blsVerify);
+      return {
+        certificate: response.certificate,
+        reply: response.reply,
+      };
+    };
+
+    const caller__renderResponse = async (arg: {
+      response: {
+        ok: boolean;
+        status: number;
+        statusText: string;
+        body: v2ResponseBody | v3ResponseBody | null;
+        headers: [string, string][];
+      };
+      reply?: ArrayBuffer;
+      certificate?: Certificate;
+      requestDetails?: CallRequest;
+    }) => {
+      const { response, reply, certificate, requestDetails } = arg;
+      const shouldIncludeHttpDetails = func.annotations.includes(ACTOR_METHOD_WITH_HTTP_DETAILS);
+      const shouldIncludeCertificate = func.annotations.includes(ACTOR_METHOD_WITH_CERTIFICATE);
+
+      const httpDetails = { ...response, requestDetails } as HttpDetailsResponse;
+      if (reply !== undefined) {
+        if (shouldIncludeHttpDetails && shouldIncludeCertificate) {
+          return {
+            httpDetails,
+            certificate,
+            result: decodeReturnValue(func.retTypes, reply),
+          };
+        } else if (shouldIncludeCertificate) {
+          return {
+            certificate,
+            result: decodeReturnValue(func.retTypes, reply),
+          };
+        } else if (shouldIncludeHttpDetails) {
+          return {
+            httpDetails,
+            result: decodeReturnValue(func.retTypes, reply),
+          };
+        }
+        return decodeReturnValue(func.retTypes, reply);
+      } else if (func.retTypes.length === 0) {
+        return shouldIncludeHttpDetails
+          ? {
+            httpDetails: response,
+            result: undefined,
+          }
+          : undefined;
+      } else {
+        throw new Error(`Call was returned undefined, but type [${func.retTypes.join(',')}].`);
+      }
+    };
+
+    const caller__handleAgentResponse = async (
       arg0: {
         agent: Agent;
         cid: Principal;
@@ -619,79 +690,53 @@ function _createActorMethod(
 
       // Fall back to polling if we receive an Accepted response code
       if (response.status === 202) {
-        const pollStrategy = pollingStrategyFactory();
-        // Contains the certificate and the reply from the boundary node
-        const response = await pollForResponse(agent, ecid, requestId, pollStrategy, blsVerify);
-        certificate = response.certificate;
-        reply = response.reply;
+        const pollResult = await caller__pollResponse({ pollingStrategyFactory, agent, ecid, requestId });
+        certificate = pollResult.certificate;
+        reply = pollResult.reply;
       }
-      const shouldIncludeHttpDetails = func.annotations.includes(ACTOR_METHOD_WITH_HTTP_DETAILS);
-      const shouldIncludeCertificate = func.annotations.includes(ACTOR_METHOD_WITH_CERTIFICATE);
-
-      const httpDetails = { ...response, requestDetails } as HttpDetailsResponse;
-      if (reply !== undefined) {
-        if (shouldIncludeHttpDetails && shouldIncludeCertificate) {
-          return {
-            httpDetails,
-            certificate,
-            result: decodeReturnValue(func.retTypes, reply),
-          };
-        } else if (shouldIncludeCertificate) {
-          return {
-            certificate,
-            result: decodeReturnValue(func.retTypes, reply),
-          };
-        } else if (shouldIncludeHttpDetails) {
-          return {
-            httpDetails,
-            result: decodeReturnValue(func.retTypes, reply),
-          };
-        }
-        return decodeReturnValue(func.retTypes, reply);
-      } else if (func.retTypes.length === 0) {
-        return shouldIncludeHttpDetails
-          ? {
-              httpDetails: response,
-              result: undefined,
-            }
-          : undefined;
-      } else {
-        throw new Error(`Call was returned undefined, but type [${func.retTypes.join(',')}].`);
-      }
+      return caller__renderResponse({ response, reply, certificate, requestDetails });
     };
 
     caller = async (options, ...args) => {
-      const arg0 = await caller0(options, ...args);
+      const arg0 = await caller__prepareOptions(options, ...args);
+      const arg = IDL.encode(func.argTypes, args);
       const resp = await arg0.agent.call(arg0.cid, {
         methodName,
-        arg: arg0.arg,
+        arg,
         effectiveCanisterId: arg0.ecid,
       });
-      return caller1(arg0, resp);
+      return caller__handleAgentResponse({ ...arg0, arg }, resp);
     };
 
     lazyCaller = async (options, ...args) => {
-      const arg0 = await caller0(options, ...args);
+      const arg0 = await caller__prepareOptions(options, ...args);
+      const arg = IDL.encode(func.argTypes, args);
       const { requestId, commit } = await arg0.agent.prepareCall(arg0.cid, {
         methodName,
-        arg: arg0.arg,
+        arg,
         effectiveCanisterId: arg0.ecid,
       });
       return {
         requestId,
         commit: async () => {
           const resp = await commit();
-          return caller1(arg0, resp);
+          return caller__handleAgentResponse({ ...arg0, arg }, resp);
         },
       };
+    };
+
+    resultFetcher = async (options: CallConfig, requestId: RequestId) => {
+      const { pollingStrategyFactory, agent, ecid } = await caller__prepareOptions(options);
+      const { certificate, reply } = await caller__pollResponse({ pollingStrategyFactory, agent, ecid, requestId });
+      return caller__renderResponse({ response: undefined!, reply, certificate, requestDetails: undefined! });
     };
   }
 
   const handler = (...args: unknown[]) => caller({}, ...args);
   handler.withOptions =
     (options: CallConfig) =>
-    (...args: unknown[]) =>
-      caller(options, ...args);
+      (...args: unknown[]) =>
+        caller(options, ...args);
   handler.prepare = async (...args: unknown[]) => {
     if (lazyCaller) {
       return lazyCaller({}, ...args);
@@ -700,6 +745,13 @@ function _createActorMethod(
         requestId: null!,
         commit: () => caller({}, ...args),
       };
+    }
+  };
+  handler.fetchResponse = async (requestId: RequestId) => {
+    if (resultFetcher) {
+      return resultFetcher({}, requestId);
+    } else {
+      throw new Error('fetchResponse not implemented for query calls');
     }
   };
   return handler as ActorMethod;
