@@ -1,19 +1,19 @@
 {
   "name": "@research-ag/hpl-client",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A client module for HPL API",
   "main": "dist/cjs/index.cjs.js",
   "module": "dist/esm/index.js",
   "types": "dist/types/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/research-ag/hpl.git",
+    "url": "git+https://github.com/research-ag/hpl-io.git",
     "directory": "client"
   },
   "author": "MR Research",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/research-ag/hpl/issues"
+    "url": "https://github.com/research-ag/hpl-io/issues"
   },
   "scripts": {
     "compile-did": "npm run rm-did && sh scripts/compile-idl-js",
@@ -34,28 +34,30 @@
     "HPL ledger",
     "token"
   ],
-  "homepage": "https://github.com/research-ag/hpl#readme",
+  "homepage": "https://github.com/research-ag/hpl-io#readme",
   "devDependencies": {
-    "@dfinity/agent": "1.0.1",
-    "@dfinity/candid": "1.0.1",
-    "@dfinity/principal": "1.0.1",
-    "@types/jest": "^29.5.1",
-    "@types/text-encoding": "^0.0.36",
+    "@dfinity/agent": "2.3.0",
+    "@dfinity/candid": "2.3.0",
+    "@dfinity/principal": "2.3.0",
+    "@types/child-process-promise": "^2.2.6",
+    "@types/jest": "^29.5.14",
+    "@types/text-encoding": "^0.0.40",
+    "child-process-promise": "^2.2.1",
     "esbuild": "^0.25.0",
-    "jest": "^29.5.0",
-    "jest-environment-jsdom": "^29.5.0",
-    "prettier": "^2.8.8",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "prettier": "^3.5.2",
     "text-encoding": "^0.7.0",
-    "ts-jest": "^29.1.0",
-    "typescript": "^5.0.4",
-    "whatwg-fetch": "^3.6.2"
+    "ts-jest": "^29.2.6",
+    "typescript": "^5.7.3",
+    "whatwg-fetch": "^3.6.20"
   },
   "peerDependencies": {
-    "@dfinity/agent": "1.0.1",
-    "@dfinity/candid": "1.0.1",
-    "@dfinity/principal": "1.0.1"
+    "@dfinity/agent": "2.3.0",
+    "@dfinity/candid": "2.3.0",
+    "@dfinity/principal": "2.3.0"
   },
   "dependencies": {
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.2"
   }
 }

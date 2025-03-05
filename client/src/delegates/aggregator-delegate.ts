@@ -2,7 +2,7 @@ import { Principal } from '@dfinity/principal';
 import { _SERVICE as AggregatorAPI, GidStatus, GlobalId, TxInput } from '../../candid/aggregator';
 import { idlFactory as aggregatorIDLFactory } from '../../candid/aggregator.idl';
 import { Delegate } from './delegate';
-import { unpackVariant } from '../utils/unpack-variant';
+import { unpackVariant } from '../utils/unpack-variant.util';
 import { QueryRetryInterceptorErrorCallback } from './call-interceptors';
 
 export type TxAggStatus =
@@ -11,7 +11,10 @@ export type TxAggStatus =
   | { status: 'other'; lastLedgerTimestamp: bigint };
 
 export class AggregatorDelegate extends Delegate<AggregatorAPI> {
-  constructor(protected readonly _canisterPrincipal: Principal | string, network: 'ic' | 'local') {
+  constructor(
+    protected readonly _canisterPrincipal: Principal | string,
+    network: 'ic' | 'local',
+  ) {
     super(aggregatorIDLFactory, _canisterPrincipal, network);
   }
 
@@ -52,11 +55,9 @@ export class AggregatorDelegate extends Delegate<AggregatorAPI> {
   async timestampedSingleTxStatus(
     id: GlobalId,
     retryErrorCallback: QueryRetryInterceptorErrorCallback = null,
-  ): Promise<[TxAggStatus, bigint]> {
+  ): Promise<[TxAggStatus, number]> {
     const [results, { canisterTimestamp }] = await this.queryWithExtras<[Array<GlobalId>], Array<GidStatus>>(
-      (
-        await this.service
-      ).txStatus,
+      (await this.service).txStatus,
       { retryErrorCallback },
       [id],
     );

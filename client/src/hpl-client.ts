@@ -9,7 +9,6 @@ import { AccountRef, TxInput } from '../candid/aggregator';
 import { sleep } from './utils/sleep.util';
 import { HplError } from './hpl-error';
 import { FeeMode } from './types';
-import { CallExtraData } from './delegates/hpl-agent';
 import { OwnersDelegate } from './delegates/owners-delegate';
 
 export type SimpleTransferStatusKey = 'queued' | 'forwarding' | 'forwarded' | 'processed';
@@ -52,7 +51,10 @@ export class HPLClient {
     await this.admin.replaceIdentity(identity);
   }
 
-  constructor(public readonly ledgerPrincipal: Principal | string, public readonly network: 'ic' | 'local') {
+  constructor(
+    public readonly ledgerPrincipal: Principal | string,
+    public readonly network: 'ic' | 'local',
+  ) {
     this.ledger = new LedgerDelegate(this.ledgerPrincipal, network);
     this.admin = new LedgerAdminDelegate(this.ledgerPrincipal, network);
   }
@@ -118,9 +120,9 @@ export class HPLClient {
     amount: number | BigInt | 'max',
     feeMode: FeeMode | null = null,
     memo: Array<Uint8Array | number[]> = [],
-  ): Promise<{ requestId: RequestId; commit: () => Promise<[GlobalId, bigint]> }> {
-    const { requestId, call: commit } = await aggregator.prepareUpdateRequest<[[TxInput]], [[GlobalId], CallExtraData]>(
-      'submitAndExecute',
+  ): Promise<{ requestId: RequestId; commit: () => Promise<[GlobalId, number]> }> {
+    const { requestId, commit } = await aggregator.prepareUpdateRequestWithExtras(
+      (await aggregator.service).submitAndExecute,
       [this._txInputFromRawArgs(from, to, asset, amount, feeMode, memo)],
     );
     return {
@@ -132,10 +134,18 @@ export class HPLClient {
     };
   }
 
+  async getSimpleTransferResponse(aggregator: AggregatorDelegate, requestId: RequestId): Promise<[GlobalId, number]> {
+    const [result, callExtra] = await aggregator.fetchUpdateRequestResponseWithExtras(
+      (await aggregator.service).submitAndExecute,
+      requestId,
+    );
+    return [result[0], callExtra.canisterTimestamp];
+  }
+
   pollTx(
     aggregator: AggregatorDelegate,
     txId: GlobalId,
-    submissionTimestamp: BigInt = 0n,
+    submissionTimestamp: number = 0,
   ): Observable<SimpleTransferStatus> {
     const subj: Subject<SimpleTransferStatus> = new Subject<SimpleTransferStatus>();
     let interrupted = false;
@@ -202,7 +212,7 @@ export class HPLClient {
             e instanceof HplError &&
             e.errorKey == 'CanisterReject' &&
             e.errorPayload == 'Not yet issued' &&
-            Number((e as HplError).callExtra?.canisterTimestamp || 0) <= Number(submissionTimestamp)
+            (e as HplError).callExtra.canisterTimestamp <= Number(submissionTimestamp)
           ) {
             // pass
           } else {

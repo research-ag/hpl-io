@@ -64,7 +64,7 @@ service : () -> {
   // If called for an account by a caller who is not the owner then the
   // functions trap.
 
-  // Open n new accounts for the caller.
+  // Open one or many new accounts for the caller.
   // If the caller is unknown then the caller gets registered.
   //
   // Return value is:
@@ -77,8 +77,7 @@ service : () -> {
   // Backwards compatibility:
   // AccountType is a variant and new cases can be introduced.
   openAccounts : (
-    nat, // number of accounts to open
-    AccountType, // type of all the new accounts
+    vec AccountType, // type of each new accounts
   ) -> (
     variant {
       ok : record {
@@ -92,7 +91,7 @@ service : () -> {
     }
   );
 
-  // Open one new virtual account for the caller.
+  // Open one or many new virtual accounts for the caller.
   //
   // Return value is:
   // - trap (CANISTER_ERROR) if caller is unknown
@@ -106,16 +105,18 @@ service : () -> {
   // Backwards compatibility:
   // The state inside the arguments is a variant and new cases reflecting new
   // account types can be introduced.
-  openVirtualAccount : (
-    AccountType, // permanent virtual account type
-    principal, // permanent access principal
-    AccountState, // initial virtual account state
-    SubId, // initial backing account
-    Time // initial expiration
+  openVirtualAccounts : (
+    vec record {
+      AccountType; // permanent virtual account type
+      principal; // permanent access principal
+      AccountState; // initial virtual account state
+      SubId; // initial backing account
+      Time // initial expiration
+    }
   ) -> (
     variant {
       ok : record {
-        id : VirId; // index of the newly opened virtual account
+        first : VirId; // index of the first newly opened virtual account
       };
       err : opt variant {
         NoSpaceForAccount;
@@ -132,9 +133,9 @@ service : () -> {
   // - err DeletedVirtualAccount if virtual account has already been deleted
   // - err InvalidArguments with text:
   //   - "UnknownVirtualAccount" if virtual account id is not known
-  deleteVirtualAccount : (VirId) -> (
+  deleteVirtualAccounts : (vec VirId) -> (
     variant {
-      ok : AccountState;
+      ok : vec AccountState;
       err : opt variant {
         DeletedVirtualAccount; // means had already been deleted before
         InvalidArguments : text;
@@ -142,11 +143,11 @@ service : () -> {
     }
   );
 
-  // Update the state of a virtual account of the caller.
+  // Update the state of a virtual accounts of the caller.
   //
   // Return value is:
   // - trap (CANISTER_ERROR) if caller is unknown
-  // - ok : new balance and the delta that was the result of the change
+  // - ok : new balance and the delta that was the result of the change per virtual account
   // - err DeletedVirtualAccount if virtual account has already been deleted
   // - err InsufficientFunds if a decrement operation was not possible
   // - err InvalidArguments with text:
@@ -158,25 +159,37 @@ service : () -> {
   // Backwards compatibility:
   // The state inside the arguments is a variant and new cases reflecting new
   // account types can be introduced.
-  updateVirtualAccount : (
-    VirId,
-    record {
-      state : opt variant {
-        ft_set : nat;
-        ft_inc : nat;
-        ft_dec : nat;
+  updateVirtualAccounts : (
+    vec record {
+      VirId;
+      record {
+        state : opt variant {
+          ft_set : nat;
+          ft_inc : nat;
+          ft_dec : nat;
+        };
+        backingAccount : opt SubId;
+        expiration : opt Time;
       };
-      backingAccount : opt SubId;
-      expiration : opt Time;
-    },
+    }
   ) -> (
     variant {
-      ok : variant {
+      ok : vec variant {
         ft : record { nat; int }; // balance (nat), delta (int)
       };
       err : opt variant {
         DeletedVirtualAccount;
         InsufficientFunds;
+        InvalidArguments : text;
+      };
+    }
+  );
+
+  emptyVirtualAccounts : (vec VirId) -> (
+    variant {
+      ok : vec int;
+      err : variant {
+        DeletedVirtualAccount;
         InvalidArguments : text;
       };
     }
@@ -203,6 +216,8 @@ service : () -> {
       record { controller : principal; decimals : nat8; description : text };
     }
   ) query;
+
+  ftSwapRate : (IdSelector) -> (vec record { AssetId; float64 }) query;
 
   // Return the list of aggregators (their principals).
   aggregators : () -> (vec record { principal; nat }) query;

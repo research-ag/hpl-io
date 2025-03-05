@@ -1,0 +1,150 @@
+type VirtualAccountId = nat;
+type TxInput = variant {
+                 ftTransfer:
+                  record {
+                    amount: variant {
+                              amount: nat;
+                              max;
+                            };
+                    asset: AssetId;
+                    feeMode: opt PublicFeeMode;
+                    from:
+                     variant {
+                       mint;
+                       sub: SubaccountId;
+                       vir: record {
+                              principal;
+                              VirtualAccountId;
+                            };
+                     };
+                    memo: vec blob;
+                    to:
+                     variant {
+                       mint;
+                       sub: SubaccountId;
+                       vir: record {
+                              principal;
+                              VirtualAccountId;
+                            };
+                     };
+                  };};
+type Time = int;
+type SubaccountId = nat;
+type Stats = 
+ record {
+   batches: record {
+              failed: nat;
+              sent: nat;
+              success: nat;
+            };
+   canisterStatus: record {
+                     cyclesBalance: nat;
+                     memory_size: nat;
+                   };
+   heartbeats: nat;
+   heartbeatsEmpty: nat;
+   heartbeatsNotEmpty: nat;
+   selfCalls: nat;
+   selfCallsEmpty: nat;
+   selfCallsNotEmpty: nat;
+   txs: record {
+          delayed: nat;
+          queued: nat;
+        };
+ };
+type Result = 
+ variant {
+   err: variant {RegisterError: text;};
+   ok: nat;
+ };
+type PublicFeeMode = 
+ variant {
+   receiverPays;
+   senderPays;
+ };
+type HttpResponse = 
+ record {
+   body: blob;
+   headers: vec record {
+                  text;
+                  text;
+                };
+   status_code: nat16;
+ };
+type HttpRequest = 
+ record {
+   body: blob;
+   headers: vec record {
+                  text;
+                  text;
+                };
+   method: text;
+   url: text;
+ };
+type GlobalId = 
+ record {
+   nat;
+   nat;
+ };
+type GidStatus = 
+ variant {
+   other: record {
+            nat64;
+            variant {
+              settled;
+              settledIfIssuedHere;
+            };
+          };
+   pending: record {};
+   queued: record {0: nat;};
+ };
+type AssetId = nat;
+type AggregatorAPI = 
+ service {
+   clearLogs: () -> () oneway;
+   http_request: (HttpRequest) -> (HttpResponse) query;
+   init: () -> (Result);
+   lastShutdownInfo: () -> (opt Time, text) query;
+   ownersSlice: (nat, nat) -> (vec principal) query;
+   ping: () -> (int);
+   rejectLog: () ->
+    (vec record {
+           text;
+           nat64;
+           nat64;
+           nat;
+           variant {
+             chunk;
+             ping;
+             restart;
+           };
+         }) query;
+   setMaxBatchSize: (opt nat) -> ();
+   setMaxWindowSize: (nat) -> ();
+   setRepeatBatch: (principal, opt TxInput, nat) -> ();
+   setSelfCallsEnabled: (bool) -> ();
+   stats: () -> (Stats) query;
+   streamStatus: () ->
+    (vec record {
+           id: nat;
+           length: nat;
+           received: nat;
+           sent: nat;
+         }) query;
+   submitAndExecute: (vec TxInput) -> (vec GlobalId);
+   trapLog: () ->
+    (vec record {
+           text;
+           nat64;
+           nat64;
+           nat;
+           variant {
+             chunk;
+             ping;
+             restart;
+           };
+         }) query;
+   /// Query transaction request info
+   txStatus: (vec GlobalId) -> (vec GidStatus) query;
+ };
+service : (principal, principal) -> AggregatorAPI
