@@ -1,4 +1,4 @@
-import { unpackVariant } from './utils/unpack-variant';
+import { unpackVariant } from './utils/unpack-variant.util';
 import { bigIntReplacer } from './utils/json_bigints';
 import { CallExtraData } from './utils/call-extra-data';
 

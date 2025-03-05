@@ -14,7 +14,7 @@ import {
 } from '../../candid/ledger';
 import { idlFactory as ledgerIDLFactory } from '../../candid/ledger.idl';
 import { Delegate } from './delegate';
-import { unpackVariant } from '../utils/unpack-variant';
+import { unpackVariant } from '../utils/unpack-variant.util';
 import { accountInfoCast, JsAccountInfo, JsAccountState, ledgerStateCast } from './types';
 import { QueryRetryInterceptorErrorCallback } from './call-interceptors';
 

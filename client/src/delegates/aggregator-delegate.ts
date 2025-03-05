@@ -2,7 +2,7 @@ import { Principal } from '@dfinity/principal';
 import { _SERVICE as AggregatorAPI, GidStatus, GlobalId, TxInput } from '../../candid/aggregator';
 import { idlFactory as aggregatorIDLFactory } from '../../candid/aggregator.idl';
 import { Delegate } from './delegate';
-import { unpackVariant } from '../utils/unpack-variant';
+import { unpackVariant } from '../utils/unpack-variant.util';
 import { QueryRetryInterceptorErrorCallback } from './call-interceptors';
 
 export type TxAggStatus =
