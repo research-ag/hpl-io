@@ -1,7 +1,7 @@
-candid
+./candid
 node_modules
-scripts
-src
+./scripts
+./src
 test
 examples
 .prettierrc
