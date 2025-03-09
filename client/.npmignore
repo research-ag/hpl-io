@@ -1,9 +1,11 @@
-./candid
+candid
 node_modules
-./scripts
-./src
+scripts
+src
 test
 examples
 .prettierrc
 jest.config.js
 tsconfig.json
+
+!dist/candid
