@@ -28,11 +28,10 @@
   },
   "keywords": [
     "internet computer",
-    "ic",
-    "dfinity",
+    "ICP",
     "HPL",
-    "HPL ledger",
-    "token"
+    "token",
+    "ledger"
   ],
   "homepage": "https://github.com/research-ag/hpl-io#readme",
   "devDependencies": {
