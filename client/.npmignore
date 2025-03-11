@@ -7,3 +7,5 @@ examples
 .prettierrc
 jest.config.js
 tsconfig.json
+*tgz
+!dist/candid
